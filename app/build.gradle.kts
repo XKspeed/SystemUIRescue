@@ -52,6 +52,8 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4")
+    // 顶栏/底栏的实时模糊（示例 App 的 BlurredBar 依赖它）
+    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
 
     // libsu —— root 命令执行（topjohnwu，Magisk 作者，2.1k star）
     // 用它的常驻 shell，避免每条命令都 fork 一个 su 进程

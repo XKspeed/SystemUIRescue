@@ -23,20 +23,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.xkspeed.systemuimount.core.DirEntry
 import com.xkspeed.systemuimount.core.Module
 import com.xkspeed.systemuimount.ui.components.ListRow
+import com.xkspeed.systemuimount.ui.util.BlurredBar
+import com.xkspeed.systemuimount.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 选文件给谁用 */
@@ -57,6 +62,15 @@ fun PickerPage(
     val scrollBehavior = MiuixScrollBehavior()
     val listState = rememberLazyListState()
 
+    val scrollProgress by remember {
+        derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else 0f }
+    }
+    val backdrop = rememberBlurBackdrop()
+    val collapsed by remember { derivedStateOf { scrollProgress == 1f } }
+    val blurActive by remember(backdrop) {
+        derivedStateOf { backdrop != null && scrollProgress == 1f }
+    }
+
     fun goUp() {
         val parent = dir.substringBeforeLast('/', "")
         if (dir != "/") dir = if (parent.isBlank()) "/" else parent
@@ -76,6 +90,12 @@ fun PickerPage(
 
     Scaffold(
         topBar = {
+            val barColor = when {
+                blurActive -> Color.Transparent
+                collapsed -> MiuixTheme.colorScheme.surface
+                else -> Color.Transparent
+            }
+            BlurredBar(backdrop, blurActive) {
             SmallTopAppBar(
                 title = when (target) {
                     PickerTarget.RESCUE -> "选择救砖界面"
@@ -83,6 +103,7 @@ fun PickerPage(
                 },
                 subtitle = dir,
                 scrollBehavior = scrollBehavior,
+                color = barColor,
                 navigationIcon = {
                     Text(
                         "‹",
@@ -104,11 +125,12 @@ fun PickerPage(
                     )
                 },
             )
+            }
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        Box(Modifier.fillMaxSize()) {
+        Box(modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier) {
             if (loading) {
                 Column(
                     Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding()),

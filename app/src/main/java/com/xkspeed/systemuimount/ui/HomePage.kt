@@ -1,6 +1,7 @@
 package com.xkspeed.systemuimount.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,15 +20,25 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.xkspeed.systemuimount.core.Module
 import com.xkspeed.systemuimount.core.ModuleState
 import com.xkspeed.systemuimount.ui.components.InfoRow
 import com.xkspeed.systemuimount.ui.components.SectionCard
 import com.xkspeed.systemuimount.ui.components.StatusDot
+import com.xkspeed.systemuimount.ui.util.BlurredBar
+import com.xkspeed.systemuimount.ui.util.LocalIsWideScreen
+import com.xkspeed.systemuimount.ui.util.pageContentPadding
+import com.xkspeed.systemuimount.ui.util.pageScrollModifiers
+import com.xkspeed.systemuimount.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -35,6 +47,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -50,179 +63,226 @@ fun HomePage(
     onStop: () -> Unit,
     onOpenLogs: () -> Unit,
 ) {
+    val isWideScreen = LocalIsWideScreen.current
     val scrollBehavior = MiuixScrollBehavior()
     val listState = rememberLazyListState()
+
+    // 滚过第一条以后，顶栏从全透明切成"底下一层模糊"
+    val scrollProgress by remember {
+        derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else 0f }
+    }
+    val backdrop = rememberBlurBackdrop()
+    val collapsed by remember { derivedStateOf { scrollProgress == 1f } }
+    val blurActive by remember(backdrop) {
+        derivedStateOf { backdrop != null && scrollProgress == 1f }
+    }
 
     val canStart = rootOk == true && state.rescueReady && state.targetOk &&
         !state.daemonRunning && !busy
 
     Scaffold(
         topBar = {
-            SmallTopAppBar(
-                title = "SystemUI救援",
-                subtitle = if (state.version.isNotBlank()) "v${state.version}" else "",
-                scrollBehavior = scrollBehavior,
-            )
+            val barColor = when {
+                blurActive -> Color.Transparent
+                collapsed -> MiuixTheme.colorScheme.surface
+                else -> Color.Transparent
+            }
+            BlurredBar(backdrop, blurActive) {
+                SmallTopAppBar(
+                    title = "SystemUI救援",
+                    subtitle = if (state.version.isNotBlank()) "v${state.version}" else "",
+                    scrollBehavior = scrollBehavior,
+                    color = barColor,
+                )
+            }
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding() + padding.calculateTopPadding() + 4.dp,
-                bottom = innerPadding.calculateBottomPadding() + 24.dp,
-            ),
-        ) {
-            // ---- 状态卡 ----
-            item {
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            StatusDot(
-                                if (state.daemonRunning) MiuixTheme.colorScheme.primary
-                                else MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            )
-                            Text(
-                                if (state.daemonRunning) "守护中" else "空闲",
-                                style = MiuixTheme.textStyles.title2,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            buildString {
-                                if (state.daemonRunning) append("PID ${state.running}")
-                                else append("未在运行")
-                                append(" · 已救砖 ${state.protectCount} 次")
-                                if (state.rescueOff) append(" · 系统救援已屏蔽")
-                            },
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            style = MiuixTheme.textStyles.subtitle,
-                        )
-                    }
-                }
-            }
+        Box(modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier) {
+            // 关键：把外层（底栏）的 padding 也并进来，否则最后一项会被底栏压住
+            val scrollPadding = pageContentPadding(
+                innerPadding,
+                padding,
+                isWideScreen,
+                extraStart = WindowInsets.displayCutout.asPaddingValues()
+                    .calculateLeftPadding(LayoutDirection.Ltr),
+                extraEnd = WindowInsets.displayCutout.asPaddingValues()
+                    .calculateRightPadding(LayoutDirection.Ltr),
+            )
 
-            if (rootOk == false) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pageScrollModifiers(
+                        showTopAppBar = true,
+                        topAppBarScrollBehavior = scrollBehavior,
+                    ),
+                contentPadding = PaddingValues(
+                    top = scrollPadding.calculateTopPadding(),
+                    start = scrollPadding.calculateLeftPadding(LayoutDirection.Ltr),
+                    end = scrollPadding.calculateRightPadding(LayoutDirection.Ltr),
+                    bottom = scrollPadding.calculateBottomPadding(),
+                ),
+            ) {
+                // ---- 状态卡 ----
                 item {
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        Column(Modifier.padding(16.dp)) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                StatusDot(
+                                    if (state.daemonRunning) MiuixTheme.colorScheme.primary
+                                    else MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                )
+                                Text(
+                                    if (state.daemonRunning) "守护中" else "空闲",
+                                    style = MiuixTheme.textStyles.title2,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
                             Text(
-                                "未获得 root 权限",
-                                color = MiuixTheme.colorScheme.error,
-                                style = MiuixTheme.textStyles.main,
-                                fontWeight = FontWeight.Medium,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "请在弹出的授权框里允许本应用使用 su，然后重新打开。",
+                                buildString {
+                                    if (state.daemonRunning) append("PID ${state.running}")
+                                    else append("未在运行")
+                                    append(" · 已救砖 ${state.protectCount} 次")
+                                    if (state.rescueOff) append(" · 系统救援已屏蔽")
+                                },
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 style = MiuixTheme.textStyles.subtitle,
                             )
                         }
                     }
                 }
-            }
 
-            // ---- 文件 ----
-            item { SmallTitle("文件") }
-            item {
-                SectionCard {
-                    ArrowPreference(
-                        title = "救砖界面",
-                        summary = if (state.rescueReady)
-                            "MiuiSystemUI.apk · ${Module.fmtSize(state.rescueSize)}"
-                        else "未选择 · 点击选择要恢复的 APK",
-                        onClick = onPickRescue,
-                    )
-                    HorizontalDivider(
-                        color = MiuixTheme.colorScheme.dividerLine,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                    ArrowPreference(
-                        title = "待测界面",
-                        summary = when {
-                            !state.targetOk -> "未选择 · 点击选择要测试的 APK"
-                            else -> state.targetPath.substringAfterLast('/') +
-                                " · " + Module.fmtSize(state.targetSize)
-                        },
-                        onClick = onPickTarget,
-                    )
+                if (rootOk == false) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    "未获得 root 权限",
+                                    color = MiuixTheme.colorScheme.error,
+                                    style = MiuixTheme.textStyles.main,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "请在弹出的授权框里允许本应用使用 su，然后重新打开。",
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    style = MiuixTheme.textStyles.subtitle,
+                                )
+                            }
+                        }
+                    }
                 }
-            }
 
-            // ---- 操作 ----
-            item { SmallTitle("操作") }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(
-                                onClick = onStart,
-                                enabled = canStart,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text(if (busy) "启动中…" else "开始测试")
-                            }
-                            Button(
-                                onClick = onStop,
-                                enabled = state.daemonRunning && !busy,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text("停止")
-                            }
-                        }
-                        val hint = when {
-                            rootOk != true -> "等待 root 授权"
-                            !state.rescueReady -> "先选一个救砖界面（能正常开机的 SystemUI）"
-                            !state.targetOk -> "再选一个待测界面"
-                            state.daemonRunning -> "守护已启动，音量+ 触发救砖，音量- 取消"
-                            else -> "启动后 5 秒自动替换界面，随后监听崩溃与音量键"
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            hint,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            style = MiuixTheme.textStyles.subtitle,
+                // ---- 文件 ----
+                item { SmallTitle("文件") }
+                item {
+                    SectionCard {
+                        ArrowPreference(
+                            title = "救砖界面",
+                            summary = if (state.rescueReady)
+                                "MiuiSystemUI.apk · ${Module.fmtSize(state.rescueSize)}"
+                            else "未选择 · 点击选择要恢复的 APK",
+                            onClick = onPickRescue,
+                        )
+                        HorizontalDivider(
+                            color = MiuixTheme.colorScheme.dividerLine,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        ArrowPreference(
+                            title = "待测界面",
+                            summary = when {
+                                !state.targetOk -> "未选择 · 点击选择要测试的 APK"
+                                else -> state.targetPath.substringAfterLast('/') +
+                                    " · " + Module.fmtSize(state.targetSize)
+                            },
+                            onClick = onPickTarget,
                         )
                     }
                 }
-            }
 
-            // ---- 其他 ----
-            item { SmallTitle("其他") }
-            item {
-                SectionCard {
-                    ArrowPreference(
-                        title = "查看日志",
-                        summary = if (state.daemonRunning) "实时刷新" else "最近一次运行的输出",
-                        onClick = onOpenLogs,
-                    )
-                }
-            }
-
-            // ---- 设备 ----
-            if (state.model.isNotBlank() || state.osName.isNotBlank()) {
-                item { SmallTitle("设备") }
+                // ---- 操作 ----
+                item { SmallTitle("操作") }
                 item {
-                    SectionCard {
-                        if (state.osName.isNotBlank() || state.androidVer.isNotBlank()) {
-                            InfoRow(
-                                "系统",
-                                listOf(state.osName, "Android ${state.androidVer}")
-                                    .filter { it.isNotBlank() }.joinToString(" · "),
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(
+                                    onClick = onStart,
+                                    enabled = canStart,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(if (busy) "启动中…" else "开始测试")
+                                }
+                                Button(
+                                    onClick = onStop,
+                                    enabled = state.daemonRunning && !busy,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text("停止")
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                when {
+                                    rootOk != true -> "等待 root 授权"
+                                    !state.rescueReady -> "先选一个救砖界面（能正常开机的 SystemUI）"
+                                    !state.targetOk -> "再选一个待测界面"
+                                    state.daemonRunning -> "守护已启动，音量+ 触发救砖，音量- 取消"
+                                    else -> "启动后 5 秒自动替换界面，随后监听崩溃与音量键"
+                                },
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                style = MiuixTheme.textStyles.subtitle,
                             )
                         }
-                        if (state.model.isNotBlank()) InfoRow("机型", state.model)
-                        InfoRow(
-                            "音量键",
-                            if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
-                                "已识别（+ ${state.keyUp.ifBlank { "—" }}）"
-                            else "未识别（仅日志模式）",
+                    }
+                }
+
+                // ---- 其他 ----
+                item { SmallTitle("其他") }
+                item {
+                    SectionCard {
+                        ArrowPreference(
+                            title = "查看日志",
+                            summary = if (state.daemonRunning) "实时刷新" else "最近一次运行的输出",
+                            onClick = onOpenLogs,
                         )
+                    }
+                }
+
+                // ---- 设备 ----
+                if (state.model.isNotBlank() || state.osName.isNotBlank()) {
+                    item { SmallTitle("设备") }
+                    item {
+                        SectionCard {
+                            if (state.osName.isNotBlank() || state.androidVer.isNotBlank()) {
+                                InfoRow(
+                                    "系统",
+                                    listOf(state.osName, "Android ${state.androidVer}")
+                                        .filter { it.isNotBlank() }.joinToString(" · "),
+                                )
+                            }
+                            if (state.model.isNotBlank()) InfoRow("机型", state.model)
+                            InfoRow(
+                                "音量键",
+                                if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
+                                    "已识别（+ ${state.keyUp.ifBlank { "—" }}）"
+                                else "未识别（仅日志模式）",
+                            )
+                        }
                     }
                 }
             }
