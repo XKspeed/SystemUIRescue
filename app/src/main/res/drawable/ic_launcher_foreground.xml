@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景层。
+  画布 108×108dp，图形全部压在中心 72×72 安全区内：
+  圆形 / 方圆形 / 水滴形遮罩切换时都不会切到弧线或箭头。
+
+  弧线用 butt 端盖而不是 round —— 圆头会和三角之间留出一道缝。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 270° 回滚弧，缺口留在右上 -->
+    <path
+        android:pathData="M54,31 A23,23 0 1,0 77,54"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="butt" />
+
+    <!-- 箭头：底边盖住弧线端面，形成连续轮廓 -->
+    <path
+        android:pathData="M77,75 L65,48 L89,48 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 缺口处的绿点，提示"已恢复" -->
+    <path
+        android:pathData="M49.5,31 A4.5,4.5 0 1,0 58.5,31 A4.5,4.5 0 1,0 49.5,31 Z"
+        android:fillColor="#3DDC84" />
+</vector>

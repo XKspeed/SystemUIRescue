@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ 主题图标：系统只取 alpha 当蒙版，所以绿点也画成白色 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M54,31 A23,23 0 1,0 77,54"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="butt" />
+    <path
+        android:pathData="M77,75 L65,48 L89,48 Z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M49.5,31 A4.5,4.5 0 1,0 58.5,31 A4.5,4.5 0 1,0 49.5,31 Z"
+        android:fillColor="#FFFFFF" />
+</vector>
