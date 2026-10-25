@@ -39,7 +39,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -96,7 +96,7 @@ fun PickerPage(
                 else -> Color.Transparent
             }
             BlurredBar(backdrop, blurActive) {
-            SmallTopAppBar(
+            TopAppBar(
                 title = when (target) {
                     PickerTarget.RESCUE -> "选择救砖界面"
                     PickerTarget.TARGET -> "选择待测界面"

@@ -31,13 +31,14 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xkspeed.systemuimount.core.Module
+import com.xkspeed.systemuimount.ui.components.BackIcon
 import com.xkspeed.systemuimount.ui.util.BlurredBar
 import com.xkspeed.systemuimount.ui.util.pageScrollModifiers
 import com.xkspeed.systemuimount.ui.util.rememberBlurBackdrop
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -96,21 +97,12 @@ fun LogPage(running: Boolean, onBack: () -> Unit) {
                 else -> Color.Transparent
             }
             BlurredBar(backdrop, blurActive) {
-                SmallTopAppBar(
+                TopAppBar(
                     title = "日志",
                     subtitle = if (running) "实时刷新中" else "最近一次运行",
                     scrollBehavior = scrollBehavior,
                     color = barColor,
-                    navigationIcon = {
-                        Text(
-                            "‹",
-                            style = MiuixTheme.textStyles.title2,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .clickable { onBack() }
-                                .padding(horizontal = 12.dp),
-                        )
-                    },
+                    navigationIcon = { BackIcon(onClick = onBack) },
                     actions = {
                         Text(
                             "刷新",

@@ -45,7 +45,7 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -88,7 +88,7 @@ fun HomePage(
                 else -> Color.Transparent
             }
             BlurredBar(backdrop, blurActive) {
-                SmallTopAppBar(
+                TopAppBar(
                     title = "SystemUI救援",
                     subtitle = if (state.version.isNotBlank()) "v${state.version}" else "",
                     scrollBehavior = scrollBehavior,

@@ -26,8 +26,12 @@ import androidx.compose.ui.window.DialogProperties
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -203,5 +207,17 @@ fun DialogActions(
         Button(onClick = onCancel) { Text(cancelText) }
         Spacer(Modifier.width(8.dp))
         Button(onClick = onConfirm) { Text(confirmText) }
+    }
+}
+
+/** 顶栏返回按钮：用 Miuix 自带的返回箭头，RTL 下会自动镜像 */
+@Composable
+fun BackIcon(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(modifier = modifier, onClick = onClick) {
+        Icon(
+            imageVector = MiuixIcons.Back,
+            contentDescription = "返回",
+            tint = MiuixTheme.colorScheme.onBackground,
+        )
     }
 }

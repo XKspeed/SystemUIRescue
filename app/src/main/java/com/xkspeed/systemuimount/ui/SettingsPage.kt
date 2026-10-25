@@ -33,8 +33,9 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -52,6 +53,7 @@ fun SettingsPage(
     state: ModuleState,
     onSetConf: (String, String) -> Unit,
     onRescueToggle: (Boolean) -> Unit,
+    onOpenUiSettings: () -> Unit = {},
 ) {
     val isWideScreen = LocalIsWideScreen.current
     val scrollBehavior = MiuixScrollBehavior()
@@ -78,7 +80,7 @@ fun SettingsPage(
                 else -> Color.Transparent
             }
             BlurredBar(backdrop, blurActive) {
-                SmallTopAppBar(
+                TopAppBar(
                     title = "设置",
                     scrollBehavior = scrollBehavior,
                     color = barColor,
@@ -142,6 +144,17 @@ fun SettingsPage(
                             unit = "次",
                             range = 1..20,
                             onChange = { onSetConf("FATAL_THRESHOLD", it.toString()) },
+                        )
+                    }
+                }
+
+                item { SmallTitle("外观") }
+                item {
+                    SectionCard {
+                        ArrowPreference(
+                            title = "界面与主题",
+                            summary = "主题模式 · 莫奈取色 · 底栏模糊 · 悬浮底栏",
+                            onClick = onOpenUiSettings,
                         )
                     }
                 }

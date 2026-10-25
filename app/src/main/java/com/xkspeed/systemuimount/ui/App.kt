@@ -3,12 +3,16 @@ package com.xkspeed.systemuimount.ui
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,11 +37,16 @@ import com.xkspeed.systemuimount.core.DaemonService
 import com.xkspeed.systemuimount.core.Module
 import com.xkspeed.systemuimount.core.ModuleState
 import com.xkspeed.systemuimount.core.Root
+import com.xkspeed.systemuimount.ui.components.MiuixDialog
 import com.xkspeed.systemuimount.ui.util.LocalIsWideScreen
 import com.xkspeed.systemuimount.ui.util.shouldShowSplitPane
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -57,6 +66,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 sealed interface Route {
     data object Main : Route
     data object Logs : Route
+    data object UiSettings : Route
     data class Picker(val target: PickerTarget) : Route
 }
 
@@ -71,6 +81,12 @@ fun App() {
     var busy by remember { mutableStateOf(false) }
     var busyTitle by remember { mutableStateOf<String?>(null) }
     var busySub by remember { mutableStateOf("") }
+    var showRootDialog by remember { mutableStateOf(false) }
+
+    // 启动时拿不到 root 就直接提示，别让用户点进一堆"操作失败"
+    LaunchedEffect(rootOk) {
+        if (rootOk == false) showRootDialog = true
+    }
 
     suspend fun refresh() {
         state = Module.readState()
@@ -140,6 +156,7 @@ fun App() {
                 }
             },
             onOpenLogs = { route = Route.Logs },
+            onOpenUiSettings = { route = Route.UiSettings },
             onSetConf = { k, v ->
                 scope.launch {
                     Module.setConf(k, v)
@@ -159,6 +176,8 @@ fun App() {
             running = state.daemonRunning,
             onBack = { route = Route.Main },
         )
+
+        Route.UiSettings -> UiSettingsPage(onBack = { route = Route.Main })
 
         is Route.Picker -> PickerPage(
             target = r.target,
@@ -230,6 +249,40 @@ fun App() {
             }
         }
     }
+
+    // 没有 root：直接给两个选择，别让用户点进一堆"操作失败"
+    if (showRootDialog) {
+        MiuixDialog(
+            title = "需要 ROOT 权限",
+            onDismiss = { showRootDialog = false },
+        ) {
+            Text(
+                "本应用通过 su 调用模块里的 webctl.sh 和 action.sh。" +
+                    "没有 root 就读不到模块目录，也起不了救砖守护。",
+                color = MiuixTheme.colorScheme.onSurface,
+                style = MiuixTheme.textStyles.subtitle,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "请在 su 授权框里选「允许」后重新打开；" +
+                    "如果之前点过拒绝，去 root 管理器的授权列表里改回来。",
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = MiuixTheme.textStyles.subtitle,
+            )
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(onClick = { showRootDialog = false }) { Text("忽略") }
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = { (context as? android.app.Activity)?.finish() },
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) { Text("退出") }
+            }
+        }
+    }
 }
 
 @Composable
@@ -242,6 +295,7 @@ private fun MainScaffold(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenLogs: () -> Unit,
+    onOpenUiSettings: () -> Unit,
     onSetConf: (String, String) -> Unit,
     onRescueToggle: (Boolean) -> Unit,
 ) {
@@ -259,51 +313,82 @@ private fun MainScaffold(
         drawRect(surfaceColor)
         drawContent()
     }
-    val blurActive = isRuntimeShaderSupported()
-
     CompositionLocalProvider(LocalIsWideScreen provides shouldShowSplitPane()) {
         Scaffold(
             bottomBar = {
-                val barColor = if (blurActive) Color.Transparent else surfaceColor
-                Box(
-                    modifier = Modifier
-                        .then(
-                            if (blurActive) {
-                                Modifier.textureBlur(
-                                    backdrop = backdrop,
-                                    shape = RectangleShape,
-                                    blurRadius = 12f,
-                                    colors = BlurDefaults.blurColors(
-                                        blendColors = listOf(
-                                            BlendColorEntry(color = surfaceColor.copy(0.5f)),
-                                        ),
-                                    ),
-                                )
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .background(barColor),
-                ) {
-                    NavigationBar(color = barColor) {
-                        NavigationBarItem(
-                            selected = selected == 0,
-                            onClick = {
-                                selected = 0
-                                scope.launch { pagerState.animateScrollToPage(0) }
-                            },
-                            icon = MiuixIcons.Home,
-                            label = "主页",
-                        )
-                        NavigationBarItem(
-                            selected = selected == 1,
-                            onClick = {
-                                selected = 1
-                                scope.launch { pagerState.animateScrollToPage(1) }
-                            },
-                            icon = MiuixIcons.Settings,
-                            label = "设置",
-                        )
+                val blurOn = UiConfigState.enableBlur && isRuntimeShaderSupported()
+                val barColor = if (blurOn) Color.Transparent else surfaceColor
+                val blurMod = if (blurOn) {
+                    Modifier.textureBlur(
+                        backdrop = backdrop,
+                        shape = RectangleShape,
+                        blurRadius = UiConfigState.blurRadius,
+                        colors = BlurDefaults.blurColors(
+                            blendColors = listOf(
+                                BlendColorEntry(color = surfaceColor.copy(0.5f)),
+                            ),
+                        ),
+                    )
+                } else {
+                    Modifier
+                }
+
+                if (UiConfigState.useFloatingNavigationBar) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        FloatingNavigationBar(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp)
+                                .navigationBarsPadding()
+                                .padding(bottom = 10.dp),
+                            color = surfaceColor,
+                        ) {
+                            FloatingNavigationBarItem(
+                                selected = selected == 0,
+                                onClick = {
+                                    selected = 0
+                                    scope.launch { pagerState.animateScrollToPage(0) }
+                                },
+                                icon = MiuixIcons.Home,
+                                label = "主页",
+                                enabled = true,
+                            )
+                            FloatingNavigationBarItem(
+                                selected = selected == 1,
+                                onClick = {
+                                    selected = 1
+                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                },
+                                icon = MiuixIcons.Settings,
+                                label = "设置",
+                                enabled = true,
+                            )
+                        }
+                    }
+                } else {
+                    Box(modifier = blurMod.background(barColor)) {
+                        NavigationBar(color = barColor) {
+                            NavigationBarItem(
+                                selected = selected == 0,
+                                onClick = {
+                                    selected = 0
+                                    scope.launch { pagerState.animateScrollToPage(0) }
+                                },
+                                icon = MiuixIcons.Home,
+                                label = "主页",
+                            )
+                            NavigationBarItem(
+                                selected = selected == 1,
+                                onClick = {
+                                    selected = 1
+                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                },
+                                icon = MiuixIcons.Settings,
+                                label = "设置",
+                            )
+                        }
                     }
                 }
             },
@@ -337,6 +422,7 @@ private fun MainScaffold(
                             state = state,
                             onSetConf = onSetConf,
                             onRescueToggle = onRescueToggle,
+                            onOpenUiSettings = onOpenUiSettings,
                         )
                     }
                 }
