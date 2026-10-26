@@ -46,12 +46,46 @@ jobs:
           cat > /tmp/signing-key.b64 <<'B64_EOF'
           ${{ secrets.SIGNING_KEY }}
           B64_EOF
-          tr -d '[:space:]' < /tmp/signing-key.b64 | base64 -d > app/release-key.jks
+          B64=$(tr -d '[:space:]' < /tmp/signing-key.b64)
+          # 下面只打印元信息（长度/字节数），绝不打印密钥内容本身
+          echo "SIGNING_KEY 字符数（去空白后）: ${#B64}"
+
+          # ① 变量是否配了
+          if [ "${#B64}" -eq 0 ]; then
+            echo "::error::SIGNING_KEY 为空 —— Secrets 里没配这个变量（或名字不一致）"
+            exit 1
+          fi
+          if [ -z "${KEY_STORE_PASSWORD}" ]; then
+            echo "::error::KEY_STORE_PASSWORD 为空 —— Secrets 里没配，应为 SysUI@Mount2026"
+            exit 1
+          fi
+          if [ -z "${KEY_ALIAS}" ]; then
+            echo "::error::KEY_ALIAS 为空 —— Secrets 里没配，应为 systemuimount"
+            exit 1
+          fi
+
+          # ② 内容是否像 base64（粘了 jks 二进制会在这里露馅）
+          if printf '%s' "$B64" | grep -q '[^A-Za-z0-9+/=]'; then
+            echo "::error::SIGNING_KEY 含有非 base64 字符 —— 多半把 jks 二进制内容粘进去了，必须是「jks 文件的 base64 文本」"
+            exit 1
+          fi
+
+          # ③ 解码
+          printf '%s' "$B64" | base64 -d > app/release-key.jks
+          echo "解码后字节数: $(wc -c < app/release-key.jks)（正确应为 2758）"
           rm -f /tmp/signing-key.b64
-          # 真正可用 = 能按别名读到条目
+
+          # ④ 格式 + store 密码（这一步失败 = 产物损坏 或 storePassword 不对）
+          if ! keytool -list -keystore app/release-key.jks -storetype pkcs12 \
+              -storepass "$KEY_STORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::keystore 打不开 —— 要么解码产物不完整（SIGNING_KEY 被截断），要么 KEY_STORE_PASSWORD 不对（应为 SysUI@Mount2026）"
+            exit 1
+          fi
+
+          # ⑤ 别名是否存在（能打开但别名不对 = KEY_ALIAS 填错）
           if ! keytool -list -keystore app/release-key.jks -storetype pkcs12 \
               -storepass "$KEY_STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
-            echo "::error::keystore 解码后不可用。SIGNING_KEY 必须是 release-key.jks 的 base64 单行文本 —— 不是 jks 二进制本身，不要被截断，也不要换行"
+            echo "::error::keystore 能打开，但找不到别名 $KEY_ALIAS —— KEY_ALIAS 应为 systemuimount"
             exit 1
           fi
           echo "keystore 校验通过（alias=$KEY_ALIAS）"
