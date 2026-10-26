@@ -19,6 +19,10 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("release-key.jks")
+            // keytool（JDK 21 起）默认生成的是 PKCS12，尽管扩展名是 .jks。
+            // 不显式声明类型时可能被按 JKS 解析，报
+            // "Failed to read key ... Tag number over 30 is not supported"
+            storeType = "pkcs12"
             // 优先读 CI 注入的环境变量；本地无环境变量时用默认值（与本地 keystore 一致）
             storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "SysUI@Mount2026"
             keyAlias = System.getenv("KEY_ALIAS") ?: "systemuimount"

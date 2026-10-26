@@ -33,10 +33,28 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 把 Secrets 里的 keystore（base64）解码回文件
+      # 把 Secrets 里的 keystore（jks 的 base64 单行文本）解码回文件。
+      # 解码后立刻按别名校验：内容不对时在这一步就报明确错误，
+      # 而不是等到 packageRelease 才抛难懂的 "Tag number over 30 is not supported"
       - name: Decode signing key
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > app/release-key.jks
+          set -euo pipefail
+          # 先落盘再解码：容忍复制时混入的换行/空格，也避免密钥内容被 shell 解释
+          cat > /tmp/signing-key.b64 <<'B64_EOF'
+          ${{ secrets.SIGNING_KEY }}
+          B64_EOF
+          tr -d '[:space:]' < /tmp/signing-key.b64 | base64 -d > app/release-key.jks
+          rm -f /tmp/signing-key.b64
+          # 真正可用 = 能按别名读到条目
+          if ! keytool -list -keystore app/release-key.jks -storetype pkcs12 \
+              -storepass "$KEY_STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::keystore 解码后不可用。SIGNING_KEY 必须是 release-key.jks 的 base64 单行文本 —— 不是 jks 二进制本身，不要被截断，也不要换行"
+            exit 1
+          fi
+          echo "keystore 校验通过（alias=$KEY_ALIAS）"
 
       # 解析发布标签：手动输入优先，留空则从 build.gradle.kts 读 versionName
       - name: Resolve version tag
@@ -61,6 +79,25 @@ jobs:
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon
+
+      # 确认密钥真的用上了：没签名的包也能构建出来，只有验证过才算数
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          SDK_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          TOOLS=$(ls -d "${SDK_HOME}"/build-tools/*/ 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "${TOOLS}" ] && [ -x "${TOOLS}apksigner" ]; then
+            "${TOOLS}apksigner" verify --print-certs "${APK}"
+            echo "apksigner 验证通过"
+          else
+            # 没有 apksigner 时退化为检查 Jar 签名块
+            if ! unzip -l "${APK}" | grep -q "META-INF/.*\.RSA"; then
+              echo "::error::产物未签名（缺少 META-INF/*.RSA）"
+              exit 1
+            fi
+            echo "签名校验通过（存在 META-INF/*.RSA）"
+          fi
 
       # 幂等：同一版本一键重发时，先删掉旧 tag 再打新的
       - name: Create / update tag
