@@ -1,15 +1,16 @@
 package com.xkspeed.systemuimount.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
@@ -31,14 +32,13 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xkspeed.systemuimount.core.Module
+import com.xkspeed.systemuimount.ui.component.glass.ScrollPage
 import com.xkspeed.systemuimount.ui.components.BackIcon
-import com.xkspeed.systemuimount.ui.util.BlurredBar
 import com.xkspeed.systemuimount.ui.util.pageScrollModifiers
 import com.xkspeed.systemuimount.ui.util.rememberBlurBackdrop
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -59,17 +59,9 @@ fun LogPage(running: Boolean, onBack: () -> Unit) {
     val listState = rememberLazyListState()
     val scrollBehavior = MiuixScrollBehavior()
 
-    // 系统返回键 / 手势 -> 回主页，而不是退出应用
-    BackHandler(enabled = true) { onBack() }
-
-    val scrollProgress by remember {
-        derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else 0f }
-    }
+    // 返回交给 NavDisplay：它自己接了预测性返回，页面再注册 BackHandler 会把
+    // 手势的进度回调吃掉，返回就变成硬跳转
     val backdrop = rememberBlurBackdrop()
-    val collapsed by remember { derivedStateOf { scrollProgress == 1f } }
-    val blurActive by remember(backdrop) {
-        derivedStateOf { backdrop != null && scrollProgress == 1f }
-    }
 
     LaunchedEffect(running, tick) {
         loading = lines.isEmpty()
@@ -89,52 +81,12 @@ fun LogPage(running: Boolean, onBack: () -> Unit) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            val barColor = when {
-                blurActive -> Color.Transparent
-                collapsed -> MiuixTheme.colorScheme.surface
-                else -> Color.Transparent
-            }
-            BlurredBar(backdrop, blurActive) {
-                TopAppBar(
-                    title = "日志",
-                    subtitle = if (running) "实时刷新中" else "最近一次运行",
-                    scrollBehavior = scrollBehavior,
-                    color = barColor,
-                    navigationIcon = { BackIcon(onClick = onBack) },
-                    actions = {
-                        Text(
-                            "刷新",
-                            style = MiuixTheme.textStyles.main,
-                            color = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clickable { tick++ }
-                                .padding(horizontal = 14.dp),
-                        )
-                    },
-                )
-            }
-        },
-        contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
-            .only(WindowInsetsSides.Horizontal),
-    ) { innerPadding ->
-        Box(modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pageScrollModifiers(
-                        showTopAppBar = true,
-                        topAppBarScrollBehavior = scrollBehavior,
-                    ),
-                contentPadding = PaddingValues(
-                    top = innerPadding.calculateTopPadding() + 8.dp,
-                    start = 14.dp,
-                    end = 14.dp,
-                    bottom = innerPadding.calculateBottomPadding() + 24.dp,
-                ),
-            ) {
+    ScrollPage(
+        title = "日志",
+        onBack = onBack,
+        bottomPadding = WindowInsets.navigationBars.asPaddingValues()
+            .calculateBottomPadding() + 24.dp,
+    ) {
                 itemsIndexed(lines) { _, line ->
                     Text(
                         line.ifEmpty { " " },
@@ -161,6 +113,4 @@ fun LogPage(running: Boolean, onBack: () -> Unit) {
                     }
                 }
             }
-        }
-    }
 }

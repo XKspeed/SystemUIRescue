@@ -124,6 +124,14 @@ object Module {
 
     suspend fun stop(): String = Root.webctl("stop")
 
+    /**
+     * 音量键校验（webroot/check.sh）。
+     * up / down 会阻塞到用户按键或 10 秒超时，所以必须放在 IO 线程。
+     */
+    suspend fun check(sub: String): String = withContext(Dispatchers.IO) {
+        Root.exec("sh " + Root.q(Root.MODULE_DIR + "/webroot/check.sh") + " " + sub)
+    }
+
     suspend fun setRescueOff(off: Boolean): String =
         Root.webctl(if (off) "rescue off" else "rescue on")
 

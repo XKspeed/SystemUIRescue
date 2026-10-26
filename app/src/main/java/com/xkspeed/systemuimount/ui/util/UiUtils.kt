@@ -62,11 +62,14 @@ fun rememberBlurBackdrop(): LayerBackdrop? {
 /**
  * 顶栏容器：滚动到顶时不透明，滚下去以后透出下方内容的模糊。
  * 不传 backdrop 或设备不支持 runtime shader 时退化成普通 Box，不影响布局。
+ *
+ * [alpha] 让模糊层随滚动渐入，而不是"滚过 1px 突然出现一整条底"。
  */
 @Composable
 fun BlurredBar(
     backdrop: LayerBackdrop?,
     blurEnabled: Boolean,
+    alpha: () -> Float = { 1f },
     content: @Composable () -> Unit,
 ) {
     val blurActive = blurEnabled && backdrop != null
@@ -75,6 +78,7 @@ fun BlurredBar(
             Box(
                 modifier = Modifier
                     .matchParentSize()
+                    .graphicsLayer { this.alpha = alpha().coerceIn(0f, 1f) }
                     .progressiveTextureBlur(
                         backdrop = backdrop,
                         shape = RectangleShape,

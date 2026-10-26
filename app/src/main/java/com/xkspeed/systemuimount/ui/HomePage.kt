@@ -29,12 +29,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.xkspeed.systemuimount.core.CrashLog
 import com.xkspeed.systemuimount.core.Module
 import com.xkspeed.systemuimount.core.ModuleState
+import com.xkspeed.systemuimount.ui.component.glass.ScrollPage
 import com.xkspeed.systemuimount.ui.components.InfoRow
 import com.xkspeed.systemuimount.ui.components.SectionCard
 import com.xkspeed.systemuimount.ui.components.StatusDot
-import com.xkspeed.systemuimount.ui.util.BlurredBar
 import com.xkspeed.systemuimount.ui.util.LocalIsWideScreen
 import com.xkspeed.systemuimount.ui.util.pageContentPadding
 import com.xkspeed.systemuimount.ui.util.pageScrollModifiers
@@ -45,7 +46,6 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -62,70 +62,24 @@ fun HomePage(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenLogs: () -> Unit,
+    onOpenVolumeCheck: () -> Unit,
+    onOpenCrashLog: () -> Unit,
 ) {
     val isWideScreen = LocalIsWideScreen.current
     val scrollBehavior = MiuixScrollBehavior()
     val listState = rememberLazyListState()
 
-    // 滚过第一条以后，顶栏从全透明切成"底下一层模糊"
-    val scrollProgress by remember {
-        derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else 0f }
-    }
     val backdrop = rememberBlurBackdrop()
-    val collapsed by remember { derivedStateOf { scrollProgress == 1f } }
-    val blurActive by remember(backdrop) {
-        derivedStateOf { backdrop != null && scrollProgress == 1f }
-    }
 
     val canStart = rootOk == true && state.rescueReady && state.targetOk &&
         !state.daemonRunning && !busy
 
-    Scaffold(
-        topBar = {
-            val barColor = when {
-                blurActive -> Color.Transparent
-                collapsed -> MiuixTheme.colorScheme.surface
-                else -> Color.Transparent
-            }
-            BlurredBar(backdrop, blurActive) {
-                TopAppBar(
-                    title = "SystemUI救援",
-                    subtitle = if (state.version.isNotBlank()) "v${state.version}" else "",
-                    scrollBehavior = scrollBehavior,
-                    color = barColor,
-                )
-            }
-        },
-        contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
-            .only(WindowInsetsSides.Horizontal),
-    ) { innerPadding ->
-        Box(modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier) {
-            // 关键：把外层（底栏）的 padding 也并进来，否则最后一项会被底栏压住
-            val scrollPadding = pageContentPadding(
-                innerPadding,
-                padding,
-                isWideScreen,
-                extraStart = WindowInsets.displayCutout.asPaddingValues()
-                    .calculateLeftPadding(LayoutDirection.Ltr),
-                extraEnd = WindowInsets.displayCutout.asPaddingValues()
-                    .calculateRightPadding(LayoutDirection.Ltr),
-            )
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pageScrollModifiers(
-                        showTopAppBar = true,
-                        topAppBarScrollBehavior = scrollBehavior,
-                    ),
-                contentPadding = PaddingValues(
-                    top = scrollPadding.calculateTopPadding(),
-                    start = scrollPadding.calculateLeftPadding(LayoutDirection.Ltr),
-                    end = scrollPadding.calculateRightPadding(LayoutDirection.Ltr),
-                    bottom = scrollPadding.calculateBottomPadding(),
-                ),
-            ) {
+    ScrollPage(
+        title = "SystemUI救援",
+        subtitle = if (state.version.isNotBlank()) "v${state.version}" else null,
+        // 底栏高度由外层 Scaffold 给出，再加一点呼吸
+        bottomPadding = padding.calculateBottomPadding() + 16.dp,
+    ) {
                 // ---- 状态卡 ----
                 item {
                     Card(
@@ -260,6 +214,28 @@ fun HomePage(
                             summary = if (state.daemonRunning) "实时刷新" else "最近一次运行的输出",
                             onClick = onOpenLogs,
                         )
+                        HorizontalDivider(
+                            color = MiuixTheme.colorScheme.dividerLine,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        ArrowPreference(
+                            title = "音量键校验",
+                            summary = if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
+                                "已识别按键设备 · 点此重新校验"
+                            else "未识别 · 救砖时音量键可能没反应",
+                            onClick = onOpenVolumeCheck,
+                        )
+                        HorizontalDivider(
+                            color = MiuixTheme.colorScheme.dividerLine,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        ArrowPreference(
+                            title = "崩溃日志",
+                            summary = if (CrashLog.lastCrashFile() != null)
+                                "有崩溃记录 · 点此查看堆栈"
+                            else "无崩溃记录",
+                            onClick = onOpenCrashLog,
+                        )
                     }
                 }
 
@@ -284,8 +260,6 @@ fun HomePage(
                             )
                         }
                     }
-                }
-            }
-        }
     }
+}
 }

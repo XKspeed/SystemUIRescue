@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -15,25 +16,43 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("release-key.jks")
+            // 优先读 CI 注入的环境变量；本地无环境变量时用默认值（与本地 keystore 一致）
+            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "SysUI@Mount2026"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "systemuimount"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "SysUI@Mount2026"
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     buildFeatures {
         compose = true
+        // 设置页要显示应用版本（BuildConfig.VERSION_NAME）
+        buildConfig = true
     }
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
 
@@ -54,6 +73,14 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4")
     // 顶栏/底栏的实时模糊（示例 App 的 BlurredBar 依赖它）
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
+    // 二级页转场 + 预测性返回（NavDisplay / NavTransitions）
+    implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // 液态玻璃引擎：AGSL 渐进模糊 + 折射/内阴影/描边高光
+    // 顶栏与底栏用的是 Sonify 的同款实现，必须同版本（1.0.5 的 padding 取整行为被依赖）
+    implementation("io.github.kyant0:backdrop:1.0.5")
+    implementation("io.github.kyant0:shapes:1.0.0")
 
     // libsu —— root 命令执行（topjohnwu，Magisk 作者，2.1k star）
     // 用它的常驻 shell，避免每条命令都 fork 一个 su 进程

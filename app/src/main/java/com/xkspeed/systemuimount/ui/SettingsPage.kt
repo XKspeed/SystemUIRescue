@@ -2,9 +2,9 @@ package com.xkspeed.systemuimount.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
@@ -15,16 +15,19 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.xkspeed.systemuimount.BuildConfig
+import kotlin.math.roundToInt
 import com.xkspeed.systemuimount.core.ModuleState
+import com.xkspeed.systemuimount.ui.component.glass.ScrollPage
 import com.xkspeed.systemuimount.ui.components.InfoRow
 import com.xkspeed.systemuimount.ui.components.SectionCard
-import com.xkspeed.systemuimount.ui.components.StepperRow
-import com.xkspeed.systemuimount.ui.util.BlurredBar
 import com.xkspeed.systemuimount.ui.util.LocalIsWideScreen
 import com.xkspeed.systemuimount.ui.util.pageContentPadding
 import com.xkspeed.systemuimount.ui.util.pageScrollModifiers
@@ -33,15 +36,16 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
+import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private val LOG_MODE_LABELS = listOf("仅记录日志", "日志 + 按键救砖", "日志 + 自动救砖")
+private val LOG_MODE_LABELS = listOf("完全禁用", "仅记录日志", "日志 + 按键救砖", "日志 + 自动救砖")
 private val LOG_MODE_SUMMARIES = listOf(
+    "不记录日志，也不启动守护",
     "只写日志，出问题自己按音量键处理",
     "监听崩溃日志，音量+ 触发救砖、音量- 取消",
     "崩溃次数或日志特征达标后自动救砖，不用按键",
@@ -59,91 +63,75 @@ fun SettingsPage(
     val scrollBehavior = MiuixScrollBehavior()
     val listState = rememberLazyListState()
 
-    val scrollProgress by remember {
-        derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else 0f }
-    }
     val backdrop = rememberBlurBackdrop()
-    val collapsed by remember { derivedStateOf { scrollProgress == 1f } }
-    val blurActive by remember(backdrop) {
-        derivedStateOf { backdrop != null && scrollProgress == 1f }
+
+    // 拖动过程中只改本地值，松手才落盘，避免每帧一次 sed
+    var logMode by remember(state.logMode) {
+        mutableFloatStateOf((state.logMode.toIntOrNull() ?: 1).coerceIn(0, 3).toFloat())
     }
+    var keyTimeout by remember(state.keyTimeout) {
+        mutableFloatStateOf((state.keyTimeout.toIntOrNull() ?: 30).coerceIn(10, 60).toFloat())
+    }
+    var fatalThreshold by remember(state.fatalThreshold) {
+        mutableFloatStateOf((state.fatalThreshold.toIntOrNull() ?: 3).coerceIn(1, 10).toFloat())
+    }
+    val logModeIndex = logMode.roundToInt().coerceIn(0, 3)
 
-    val logModeIndex = ((state.logMode.toIntOrNull() ?: 1) - 1).coerceIn(0, 2)
-    val keyTimeout = state.keyTimeout.toIntOrNull() ?: 30
-    val fatalThreshold = state.fatalThreshold.toIntOrNull() ?: 3
-
-    Scaffold(
-        topBar = {
-            val barColor = when {
-                blurActive -> Color.Transparent
-                collapsed -> MiuixTheme.colorScheme.surface
-                else -> Color.Transparent
-            }
-            BlurredBar(backdrop, blurActive) {
-                TopAppBar(
-                    title = "设置",
-                    scrollBehavior = scrollBehavior,
-                    color = barColor,
-                )
-            }
-        },
-        contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
-            .only(WindowInsetsSides.Horizontal),
-    ) { innerPadding ->
-        Box(modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier) {
-            val scrollPadding = pageContentPadding(innerPadding, padding, isWideScreen)
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pageScrollModifiers(
-                        showTopAppBar = true,
-                        topAppBarScrollBehavior = scrollBehavior,
-                    ),
-                contentPadding = PaddingValues(
-                    top = scrollPadding.calculateTopPadding(),
-                    start = scrollPadding.calculateLeftPadding(LayoutDirection.Ltr),
-                    end = scrollPadding.calculateRightPadding(LayoutDirection.Ltr),
-                    bottom = scrollPadding.calculateBottomPadding(),
-                ),
-            ) {
+    ScrollPage(
+        title = "设置",
+        // 与主页/关于一致：底栏高度（70dp）已由外层 pagePadding 给出，这里只加一点呼吸
+        bottomPadding = padding.calculateBottomPadding() + 16.dp,
+    ) {
                 item { SmallTitle("运行") }
                 item {
                     SectionCard {
-                        OverlayDropdownPreference(
+                        // 4 档：0 禁用 / 1 仅日志 / 2 按键救砖 / 3 自动救砖
+                        SliderPreference(
                             title = "运行模式",
                             summary = LOG_MODE_SUMMARIES[logModeIndex],
-                            items = LOG_MODE_LABELS,
-                            selectedIndex = logModeIndex,
-                            onSelectedIndexChange = { idx ->
-                                onSetConf("LOG_MODE", (idx + 1).toString())
+                            value = logMode,
+                            onValueChange = { logMode = it },
+                            onValueChangeFinished = {
+                                onSetConf("LOG_MODE", logModeIndex.toString())
                             },
+                            valueRange = 0f..3f,
+                            steps = 2,
+                            showKeyPoints = true,
+                            keyPoints = listOf(0f, 1f, 2f, 3f),
+                            magnetThreshold = 0.18f,
+                            valueText = LOG_MODE_LABELS[logModeIndex],
                         )
                         HorizontalDivider(
                             color = MiuixTheme.colorScheme.dividerLine,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
-                        StepperRow(
+                        SliderPreference(
                             title = "等待超时",
                             summary = "替换界面后等 SystemUI 重启的秒数",
                             value = keyTimeout,
-                            unit = "秒",
-                            range = 5..120,
-                            step = 5,
-                            onChange = { onSetConf("KEY_TIMEOUT", it.toString()) },
+                            onValueChange = { keyTimeout = it },
+                            onValueChangeFinished = {
+                                onSetConf("KEY_TIMEOUT", keyTimeout.roundToInt().toString())
+                            },
+                            valueRange = 10f..60f,
+                            steps = 9,
+                            valueText = "${keyTimeout.roundToInt()} 秒",
                         )
                         HorizontalDivider(
                             color = MiuixTheme.colorScheme.dividerLine,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
-                        StepperRow(
+                        SliderPreference(
                             title = "崩溃阈值",
                             summary = "累计多少条 fatal 日志后自动救砖",
                             value = fatalThreshold,
-                            unit = "次",
-                            range = 1..20,
-                            onChange = { onSetConf("FATAL_THRESHOLD", it.toString()) },
+                            onValueChange = { fatalThreshold = it },
+                            onValueChangeFinished = {
+                                onSetConf("FATAL_THRESHOLD", fatalThreshold.roundToInt().toString())
+                            },
+                            valueRange = 1f..10f,
+                            steps = 8,
+                            valueText = "${fatalThreshold.roundToInt()} 次",
                         )
                     }
                 }
@@ -191,14 +179,12 @@ fun SettingsPage(
                     }
                 }
 
-                item { SmallTitle("关于") }
+                // 版本信息统一放到「关于」tab，这里只留排查问题时才看的路径
+                item { SmallTitle("模块") }
                 item {
                     SectionCard {
-                        InfoRow("版本", if (state.version.isNotBlank()) "v${state.version}" else "—")
                         InfoRow("模块路径", "/data/adb/modules/systemui_mount")
                     }
                 }
             }
-        }
-    }
 }
