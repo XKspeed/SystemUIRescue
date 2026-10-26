@@ -102,6 +102,9 @@ sealed interface Route : NavKey {
     data object CrashLogs : Route
 
     @Serializable
+    data object ThirdPartyLicenses : Route
+
+    @Serializable
     data class Picker(val target: PickerTarget) : Route
 }
 
@@ -240,6 +243,7 @@ fun App() {
                 onOpenUiSettings = { backStack.add(Route.UiSettings) },
                 onOpenVolumeCheck = { backStack.add(Route.VolumeCheck) },
                 onOpenCrashLog = { backStack.add(Route.CrashLogs) },
+                onOpenThirdPartyLicenses = { backStack.add(Route.ThirdPartyLicenses) },
                 onSetConf = { k, v ->
                     scope.launch {
                         Module.setConf(k, v)
@@ -276,6 +280,10 @@ fun App() {
 
         entry<Route.CrashLogs> {
             CrashLogPage(onBack = { backStack.removeLastOrNull() })
+        }
+
+        entry<Route.ThirdPartyLicenses> {
+            ThirdPartyLicensesPage(onBack = { backStack.removeLastOrNull() })
         }
 
         entry<Route.Picker> { r ->
@@ -451,6 +459,7 @@ private fun MainScaffold(
     onOpenUiSettings: () -> Unit,
     onOpenVolumeCheck: () -> Unit,
     onOpenCrashLog: () -> Unit,
+    onOpenThirdPartyLicenses: () -> Unit,
     onSetConf: (String, String) -> Unit,
     onRescueToggle: (Boolean) -> Unit,
 ) {
@@ -539,11 +548,12 @@ private fun MainScaffold(
                             onOpenUiSettings = onOpenUiSettings,
                         )
 
-                        // 关于页：顶栏返回键直接回主页（而不是滑回设置页）
+                        // 关于页是一级 tab（底栏页），无左上角返回键；
+                        // 第三方许可证走二级界面，从「第三方许可证」入口进入。
                         else -> AboutPage(
                             padding = pagePadding,
                             state = state,
-                            onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+                            onOpenThirdPartyLicenses = onOpenThirdPartyLicenses,
                         )
                     }
                 }

@@ -17,9 +17,10 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.effect
 
 /**
- * 顶栏真·渐进模糊（移植自 NexioSchedule 的 ProgressiveBlurTopBar，AGSL 版）。
+ * 顶栏真·渐进模糊（移植自 Sonify 的 TitleBarProgressiveBlur，源自 NexioSchedule 的
+ * ProgressiveBlurTopBar，AGSL 版。用于对齐 Sonify 顶栏观感）。
  *
- * 与旧实现（整块恒定 blur(4dp) + 一道垂直 alpha 渐变遮罩，即库示例自述的
+ * 与旧实现（整块恒定 blur + 一道垂直 alpha 渐变遮罩，即库示例自述的
  * "alpha-masked progressive blur"）的区别：这里模糊**半径本身**随 Y 连续变化，
  * 顶部最大 12dp、向下收到 0，是真正逐像素的渐进散焦，而不是"糊得均匀、只是淡出得渐变"。
  *
@@ -61,9 +62,8 @@ private const val TINT_MAX_ALPHA = 0.8f
  * 布局高度保持调用处给的原值（不撑高顶栏），但采样/绘制会向下方多延伸 [BlurTail]，
  * 所以淡出尾巴落在顶栏下方而不是被裁掉。
  *
- * @param backdrop 顶栏采样源（见 [rememberTitleBackdrop]）
- * @param tintColor 渐变用页面底色；必须与页面实际背景一致（见 [LocalTitlePageColor]），
- * 否则顶栏渐变会与页面出现色差
+ * @param backdrop 顶栏采样源（见 rememberLayerBackdrop）
+ * @param tintColor 渐变用页面底色；必须与页面实际背景一致，否则顶栏渐变会与页面出现色差
  */
 @Composable
 fun titleBarProgressiveBlur(

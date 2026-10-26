@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -54,12 +55,8 @@ import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawPlainBackdrop
-import com.kyant.backdrop.effects.blur
-import com.xkspeed.systemuimount.ui.UiConfigState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -103,6 +100,7 @@ fun ScrollPage(
     actions: @Composable RowScope.() -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
     bottomPadding: Dp = 24.dp,
+    backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
     val pageColor = MiuixTheme.colorScheme.surface
@@ -131,16 +129,19 @@ fun ScrollPage(
             // 二级页没有这层就透出一级页：NavDisplay 转场时下层还在画面里
             .background(MiuixTheme.colorScheme.surface)
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                // 这个修饰符把列表画面录进 backdrop，顶栏和底栏才有东西可采样
-                .layerBackdrop(backdrop)
-                .scrollEndHaptic()
-                .overScrollVertical(),
-            contentPadding = PaddingValues(top = BarHeight),
-        ) {
+        // 背景层（如关于页的流光）与列表一起录进 backdrop：
+        // 顶栏玻璃（drawPlainBackdrop）采样到的就是「流光 + 列表」，折叠后透出流光而非黑底
+        Box(Modifier.matchParentSize().layerBackdrop(backdrop)) {
+            Box(Modifier.matchParentSize()) { backgroundContent() }
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scrollEndHaptic()
+                    .overScrollVertical(),
+                contentPadding = PaddingValues(top = BarHeight),
+            ) {
             item(key = "large-title") {
                 Column {
                     Spacer(Modifier.height(statusBarHeight))
@@ -152,6 +153,7 @@ fun ScrollPage(
                 // 底部留白由调用方算全（底栏页要含底栏高度，二级页要含导航栏 inset）
                 Spacer(Modifier.height(bottomPadding))
             }
+        }
         }
 
         GlassTopBar(
@@ -218,7 +220,6 @@ private fun GlassTopBar(
     barVisible: () -> Boolean,
     smallTitleVisible: () -> Boolean,
 ) {
-    val blurSupported = isRuntimeShaderSupported() && !UiConfigState.safeMode
     val pageColor = MiuixTheme.colorScheme.surface
 
     // 玻璃材质的透明度跟随顶栏出现与否：顶栏还没出现时（顶栏透明）返回键是纯图标，
@@ -244,20 +245,13 @@ private fun GlassTopBar(
             enter = fadeIn(tween(120)),
             exit = fadeOut(tween(120)),
         ) {
+            // 顶栏玻璃：对齐 Sonify TitleBar（默认开启「工具栏液态玻璃」），用 Sonify 同款
+            // titleBarProgressiveBlur —— 真·渐进模糊（顶部 12dp 收到 0，并向栏下多延伸 40dp
+            // 作淡出尾巴），大标题是「虚化着沉进」顶栏而非被一条硬边切断。
+            // 采样 backdrop 已含背景流光，折叠后透出流光而非黑底。
             Spacer(
                 Modifier
-                    .then(
-                        if (blurSupported) {
-                            titleBarProgressiveBlur(backdrop = backdrop, tintColor = pageColor)
-                        } else {
-                            Modifier.drawPlainBackdrop(
-                                backdrop = backdrop,
-                                shape = { androidx.compose.ui.graphics.RectangleShape },
-                                effects = { blur(14.dp.toPx()) },
-                                onDrawSurface = { drawRect(pageColor.copy(alpha = 0.7f)) },
-                            )
-                        }
-                    )
+                    .then(titleBarProgressiveBlur(backdrop = backdrop, tintColor = pageColor))
                     .fillMaxSize(),
             )
         }
@@ -391,17 +385,16 @@ private fun GlassBackButton(
     glassAlpha: () -> Float = { 1f },
 ) {
     val painter: Painter = androidx.compose.ui.graphics.vector.rememberVectorPainter(icon)
-    // 返回箭头视觉重心偏左，往左挪一点；「关闭」是居中图标，不动
-    val isBack = icon == MiuixIcons.Back
     // 主题前景色：与页面标题文字同色，任何背景下都读得清
     val iconTint = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.85f)
     LiquidTopBarButton(
         onClick = onClick,
         backdrop = backdrop,
         icon = painter,
-        contentDescription = if (isBack) "返回" else "关闭",
+        contentDescription = "返回",
         iconSize = 18.dp,
-        iconOffset = if (isBack) DpOffset((-2).dp, 0.dp) else DpOffset.Zero,
+        // 图标几何居中于 42dp 圆钮即可，不再额外偏移（之前左移 -2dp 导致视觉偏左）
+        iconOffset = DpOffset.Zero,
         // 图标颜色固定，不随玻璃自适应亮度翻转
         iconTint = iconTint,
         backdropAlpha = { glassAlpha() },

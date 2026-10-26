@@ -1,8 +1,7 @@
 name: Build APK
 
 on:
-  push:
-    branches: [ main ]
+  # 只手动触发：每次 push 都构建一次没必要，要包时到 Actions 页面点 Run workflow
   workflow_dispatch:
 
 jobs:

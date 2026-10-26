@@ -1,25 +1,28 @@
 name: Release
 
 on:
-  # 手动触发（Actions 页面点 Run workflow）
+  # 只手动触发：一键发布 —— Actions 页面点 Run workflow，
+  # tag 留空则自动取 build.gradle.kts 的 versionName。
+  # 不挂 push / tag 触发，避免每次提交都发一个 Release。
   workflow_dispatch:
     inputs:
-      version_name:
-        description: 'Version name to embed (e.g. 1.0)'
+      tag:
+        description: '发布标签（如 v1.0.0）；留空自动取 versionName'
         required: false
         default: ''
-  # 推送 v* 标签时自动发版
-  push:
-    tags:
-      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
-  build-release:
-    name: Build signed release APK
+  release:
+    name: Build & Publish Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -35,6 +38,22 @@ jobs:
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > app/release-key.jks
 
+      # 解析发布标签：手动输入优先，留空则从 build.gradle.kts 读 versionName
+      - name: Resolve version tag
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+            TAG="v${VERSION}"
+          fi
+          # 去掉开头的 v 得到纯版本号（如 1.0.0）
+          VERSION_NAME="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "发布标签: ${TAG}（版本 ${VERSION_NAME}）"
+
       # 密码通过环境变量传给 Gradle（build.gradle.kts 读取）
       - name: Build release APK
         env:
@@ -43,17 +62,46 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon
 
+      # 幂等：同一版本一键重发时，先删掉旧 tag 再打新的
+      - name: Create / update tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+            git tag -d "${TAG}" 2>/dev/null || true
+          fi
+          git tag "${TAG}"
+          git push origin "${TAG}"
+
+      # 本次 Release 说明取自 update.md 顶部最新一段：
+      # update.md 由我们维护 —— 新版本内容写在文件顶部，历史段落自然下移留档，
+      # 工作流只取顶部那一段，保证每个 Release 只描述自己这个版本。
+      - name: Extract release notes
+        run: |
+          if [ -f update.md ]; then
+            awk '/^## /{c++} c==1' update.md > release_notes.md
+          fi
+          if [ ! -s release_notes.md ]; then
+            printf '详见下方提交记录。\n' > release_notes.md
+          fi
+          echo "--- 本次 Release 说明 ---"
+          cat release_notes.md
+
+      # 构建完直接发布 Release（手动触发与 tag 推送都会执行），附带签名 APK
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.version_name }}
+          body_path: release_notes.md
+          files: app/build/outputs/apk/release/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: app/build/outputs/apk/release/app-release.apk
-
-      # 仅当推送 tag 时，自动创建 GitHub Release 并附上 APK
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/app-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

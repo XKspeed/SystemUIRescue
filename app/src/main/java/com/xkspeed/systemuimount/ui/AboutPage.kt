@@ -3,69 +3,68 @@ package com.xkspeed.systemuimount.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.add
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.core.graphics.drawable.toBitmap
 import com.xkspeed.systemuimount.BuildConfig
-import com.xkspeed.systemuimount.R
 import com.xkspeed.systemuimount.core.ModuleState
+import com.xkspeed.systemuimount.ui.component.effect.BgEffectBackground
 import com.xkspeed.systemuimount.ui.component.glass.ScrollPage
-import com.xkspeed.systemuimount.ui.components.InfoRow
-import com.xkspeed.systemuimount.ui.components.SectionCard
-import com.xkspeed.systemuimount.ui.util.LocalIsWideScreen
-import com.xkspeed.systemuimount.ui.util.pageContentPadding
-import com.xkspeed.systemuimount.ui.util.pageScrollModifiers
+import com.xkspeed.systemuimount.ui.util.isInDarkTheme
 import com.xkspeed.systemuimount.ui.util.rememberBlurBackdrop
-import com.xkspeed.systemuimount.ui.util.rememberDrawablePainter
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurBlendMode
+import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 /**
- * 关于页（底栏第三个 tab）。
+ * 关于页（底栏第三个 tab，一级页）。
  *
- * 结构照示例 App：大图标 + 应用名 + 版本，往上滑时整块按不同节奏淡出缩小，
- * 顶栏同时从透明切成模糊。
+ * 整体从 apkeditor(miuix) 的 AboutPage 直接移植：
+ * - 背景 [BgEffectBackground]（原版 AGSL 流光），并把自己录进 [rememberBlurBackdrop]
+ *   返回的采样层，磨砂卡片 / 应用名都从这里取色；
+ * - Logo 区浮动思路一致：图标 + 应用名（流光染色）+ 版本号，随滚动分层淡出缩小；
+ * - 内容为两张磨砂卡（textureBlur 采样背景流光），不分组标题。
  *
- * [onBack]：顶栏左上角返回键。底栏切页时"退出"只能滑回上一页（设置页），
- * 回不到主页；这个返回键直接回主页。
+ * 这是一级页（底栏 tab），**不画左上角返回键**；依赖清单放在二级界面 [onOpenThirdPartyLicenses]。
  */
 @Composable
-fun AboutPage(padding: PaddingValues, state: ModuleState, onBack: () -> Unit) {
-    val isWideScreen = LocalIsWideScreen.current
-    val scrollBehavior = MiuixScrollBehavior()
+fun AboutPage(
+    padding: PaddingValues,
+    state: ModuleState,
+    onOpenThirdPartyLicenses: () -> Unit,
+) {
     val listState = rememberLazyListState()
     val uriHandler = LocalUriHandler.current
 
@@ -78,123 +77,238 @@ fun AboutPage(padding: PaddingValues, state: ModuleState, onBack: () -> Unit) {
             }
         }
     }
+
     val backdrop = rememberBlurBackdrop()
-
-    // 三条内容错开时间淡出，看起来像"一层层收走"而不是整块消失
-    val iconProgress = ((scrollProgress - 0.35f) / 0.15f).coerceIn(0f, 1f)
-    val nameProgress = ((scrollProgress - 0.20f) / 0.15f).coerceIn(0f, 1f)
-    val versionProgress = ((scrollProgress - 0.05f) / 0.15f).coerceIn(0f, 1f)
-
-    val appVersion = "v${BuildConfig.VERSION_NAME}"
-    val moduleVersion = if (state.version.isNotBlank()) "v${state.version}" else "未读到"
-    val iconPainter = rememberDrawablePainter(R.mipmap.ic_launcher)
 
     ScrollPage(
         title = "关于",
-        // 底栏 tab：底部要含底栏高度（外层 Scaffold 的 padding），再加呼吸
+        // 底栏 tab：底部要含底栏高度（外层 padding），再加呼吸
         bottomPadding = padding.calculateBottomPadding() + 16.dp,
-        // 顶栏返回键：直接回主页（不是滑回设置页）
-        onBack = onBack,
-    ) {
-                // ---- 图标 + 名字 + 版本 ----
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 40.dp, bottom = 18.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(100.dp)
-                                .graphicsLayer {
-                                    alpha = 1 - iconProgress
-                                    scaleX = 1 - iconProgress * 0.05f
-                                    scaleY = 1 - iconProgress * 0.05f
-                                }
-                                .squircleClip(cornerRadius = 26.dp),
-                        ) {
-                            if (iconPainter != null) {
-                                Image(
-                                    painter = iconPainter,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(100.dp),
-                                )
-                            }
-                        }
-                        Text(
-                            "SystemUI救援",
-                            modifier = Modifier
-                                .padding(top = 14.dp, bottom = 4.dp)
-                                .graphicsLayer {
-                                    alpha = 1 - nameProgress
-                                    scaleX = 1 - nameProgress * 0.05f
-                                    scaleY = 1 - nameProgress * 0.05f
-                                },
-                            color = MiuixTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 30.sp,
-                        )
-                        Text(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .graphicsLayer {
-                                    alpha = 1 - versionProgress
-                                    scaleX = 1 - versionProgress * 0.05f
-                                    scaleY = 1 - versionProgress * 0.05f
-                                },
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            text = appVersion,
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-
-                item { SmallTitle("版本") }
-                item {
-                    SectionCard {
-                        InfoRow("应用版本", appVersion)
-                        InfoRow("模块版本", moduleVersion)
-                        InfoRow("最低系统", "Android 15 (SDK 35)")
-                    }
-                }
-
-                item { SmallTitle("链接") }
-                item {
-                    SectionCard {
-                        ArrowPreference(
-                            title = "GitHub 仓库",
-                            summary = "github.com/XKspeed/SystemUIRescue",
-                            onClick = {
-                                runCatching {
-                                    uriHandler.openUri("https://github.com/XKspeed/SystemUIRescue")
-                                }
-                            },
-                        )
-                    }
-                }
-
-                item { SmallTitle("说明") }
-                item {
-                    SectionCard {
-                        Text(
-                            "这个应用替代模块的 WebUI，用原生界面控制换界面与救砖流程。",
-                            color = MiuixTheme.colorScheme.onSurface,
-                            style = MiuixTheme.textStyles.subtitle,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                        Text(
-                            "守护运行期间会挂一个前台服务，避免进程被系统冻结；" +
-                                "停止守护后服务自动退出。所有操作都通过 su 调用模块里的脚本，" +
-                                "不会改动系统分区。",
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            style = MiuixTheme.textStyles.subtitle,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                        Spacer(Modifier.height(6.dp))
-                    }
-                }
+        // 背景流光：apkeditor 原版 BgEffectBackground，并录进 backdrop 供卡片/标题采样
+        backgroundContent = {
+            BgEffectBackground(
+                dynamicBackground = true,
+                isFullSize = true,
+                bgModifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
+                alpha = { 1f - scrollProgress },
+            ) {
+                // 纯背景层，无内容
             }
+        },
+    ) {
+        // ---- 图标 + 名字 + 版本 ----
+        item {
+            AboutLogo(
+                scrollProgressProvider = { scrollProgress },
+                backdrop = backdrop,
+            )
+        }
+
+        // ---- 卡片 1：版本信息（对齐 apkeditor 的「应用版本 / 作者」卡）----
+        item {
+            FrostedCard(backdrop = backdrop) {
+                ArrowPreference(
+                    title = "应用版本",
+                    summary = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    onClick = {
+                        runCatching {
+                            uriHandler.openUri("https://github.com/XKspeed/SystemUIRescue")
+                        }
+                    },
+                )
+                BasicComponent(
+                    title = "模块版本",
+                    summary = if (state.version.isNotBlank()) "v${state.version}" else "未读到",
+                )
+                BasicComponent(
+                    title = "最低系统",
+                    summary = "Android 15 (SDK 35)",
+                )
+            }
+        }
+
+        // ---- 卡片 2：链接与许可证（对齐 apkeditor 的「GPL / 第三方许可证」卡）----
+        item {
+            FrostedCard(backdrop = backdrop) {
+                ArrowPreference(
+                    title = "GitHub 仓库",
+                    summary = "github.com/XKspeed/SystemUIRescue",
+                    onClick = {
+                        runCatching {
+                            uriHandler.openUri("https://github.com/XKspeed/SystemUIRescue")
+                        }
+                    },
+                )
+                ArrowPreference(
+                    title = "GNU General Public License v3.0",
+                    summary = "开源许可证",
+                    onClick = {
+                        runCatching { uriHandler.openUri("https://www.gnu.org/licenses/gpl-3.0.html") }
+                    },
+                )
+                ArrowPreference(
+                    title = "第三方许可证",
+                    summary = "依赖库版权声明",
+                    onClick = onOpenThirdPartyLicenses,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Logo 区：图标 + 应用名 + 版本号。
+ *
+ * 应用名用 [textureBlur]（contentBlendMode = DstIn）从背景采样流光染色，
+ * 就是 apkeditor 里 "ApkEditor·Miuix" 那种随背景流动的彩色字。
+ */
+@Composable
+private fun AboutLogo(
+    scrollProgressProvider: () -> Float,
+    backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop?,
+) {
+    val isInDark = isInDarkTheme()
+    // 应用名的流光染色配色，照抄 apkeditor 的 logoBlend
+    val logoBlend = remember(isInDark) {
+        if (isInDark) {
+            listOf(
+                BlendColorEntry(Color(0xe6a1a1a1), BlurBlendMode.ColorDodge),
+                BlendColorEntry(Color(0x4de6e6e6), BlurBlendMode.LinearLight),
+                BlendColorEntry(Color(0xff1af500), BlurBlendMode.Lab),
+            )
+        } else {
+            listOf(
+                BlendColorEntry(Color(0xcc4a4a4a), BlurBlendMode.ColorBurn),
+                BlendColorEntry(Color(0xff4f4f4f), BlurBlendMode.LinearLight),
+                BlendColorEntry(Color(0xff1af200), BlurBlendMode.Lab),
+            )
+        }
+    }
+
+    val density = LocalDensity.current
+    val ctx = LocalContext.current
+    // 直接读取应用启动图标，保证与桌面图标始终一致
+    val appIcon = remember(ctx, density) {
+        val iconSizePx = with(density) { 100.dp.roundToPx() }
+        ctx.packageManager.getApplicationIcon(ctx.applicationInfo)
+            .toBitmap(iconSizePx, iconSizePx)
+            .asImageBitmap()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 40.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val iconProgress = ((scrollProgressProvider() - 0.35f) / 0.15f).coerceIn(0f, 1f)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(100.dp)
+                .graphicsLayer {
+                    clip = true
+                    alpha = 1 - iconProgress
+                    scaleX = 1 - (iconProgress * 0.05f)
+                    scaleY = 1 - (iconProgress * 0.05f)
+                }
+                .squircleClip(cornerRadius = 28.dp),
+        ) {
+            Image(
+                modifier = Modifier.size(100.dp),
+                bitmap = appIcon,
+                contentDescription = null,
+            )
+        }
+        MiuixText(
+            modifier = Modifier
+                .padding(top = 12.dp, bottom = 5.dp)
+                .graphicsLayer {
+                    val nameProgress = ((scrollProgressProvider() - 0.20f) / 0.15f).coerceIn(0f, 1f)
+                    alpha = 1 - nameProgress
+                    scaleX = 1 - (nameProgress * 0.05f)
+                    scaleY = 1 - (nameProgress * 0.05f)
+                }
+                .then(
+                    if (backdrop != null) {
+                        Modifier.textureBlur(
+                            backdrop = backdrop,
+                            shape = RoundedCornerShape(16.dp),
+                            blurRadius = 150f,
+                            noiseCoefficient = BlurDefaults.NoiseCoefficient,
+                            colors = BlurDefaults.blurColors(blendColors = logoBlend),
+                            contentBlendMode = BlendMode.DstIn,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
+            text = "SystemUI救援",
+            color = colorScheme.onBackground,
+            fontWeight = FontWeight.Bold,
+            fontSize = 35.sp,
+        )
+        MiuixText(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    val versionProgress = ((scrollProgressProvider() - 0.05f) / 0.15f).coerceIn(0f, 1f)
+                    alpha = 1 - versionProgress
+                    scaleX = 1 - (versionProgress * 0.05f)
+                    scaleY = 1 - (versionProgress * 0.05f)
+                },
+            color = colorScheme.onSurfaceVariantSummary,
+            text = "v${BuildConfig.VERSION_NAME}",
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * 磨砂玻璃卡片：容器填充透明 + [textureBlur] 采样背后流光，参数与 apkeditor
+ * 的卡片完全一致（16dp 圆角 / 60f 模糊 / ColorBlendToken 混色）。
+ * 不支持 runtime shader 时退回实心底色，避免卡片变透明看不见字。
+ */
+@Composable
+private fun FrostedCard(
+    backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop?,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val isInDark = isInDarkTheme()
+    val cardBlend = if (isInDark) {
+        listOf(
+            BlendColorEntry(Color(0x4DA9A9A9), BlurBlendMode.Luminosity),
+            BlendColorEntry(Color(0x1A9C9C9C), BlurBlendMode.PlusDarker),
+        )
+    } else {
+        listOf(
+            BlendColorEntry(Color(0x340034F9), BlurBlendMode.Overlay),
+            BlendColorEntry(Color(0xB3FFFFFF), BlurBlendMode.HardLight),
+        )
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .padding(top = 12.dp)
+            .then(
+                if (backdrop != null) {
+                    Modifier.textureBlur(
+                        backdrop = backdrop,
+                        shape = RoundedCornerShape(16.dp),
+                        blurRadius = 60f,
+                        noiseCoefficient = BlurDefaults.NoiseCoefficient,
+                        colors = BlurDefaults.blurColors(blendColors = cardBlend),
+                    )
+                } else {
+                    Modifier
+                },
+            ),
+        colors = CardDefaults.defaultColors(
+            if (backdrop != null) Color.Transparent else colorScheme.surfaceContainer,
+            Color.Transparent,
+        ),
+        content = content,
+    )
 }
