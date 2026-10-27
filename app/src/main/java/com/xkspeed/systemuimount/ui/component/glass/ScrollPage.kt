@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -94,6 +95,8 @@ fun ScrollPage(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     backIcon: ImageVector = MiuixIcons.Back,
+    /** 右上角关闭键：与左上角返回键同款玻璃圆钮，点击直接退出本页（不再是一级目录）。传 null 不画 */
+    onClose: (() -> Unit)? = null,
     smallTitle: String? = null,
     onTitleClick: (() -> Unit)? = null,
     onTitleLongClick: (() -> Unit)? = null,
@@ -163,6 +166,7 @@ fun ScrollPage(
             onTitleLongClick = onTitleLongClick,
             onBack = onBack,
             backIcon = backIcon,
+            onClose = onClose,
             actions = actions,
             backdrop = backdrop,
             barVisible = collapse.bar,
@@ -215,6 +219,7 @@ private fun GlassTopBar(
     onTitleLongClick: (() -> Unit)?,
     onBack: (() -> Unit)?,
     backIcon: ImageVector,
+    onClose: (() -> Unit)?,
     actions: @Composable RowScope.() -> Unit,
     backdrop: Backdrop,
     barVisible: () -> Boolean,
@@ -285,8 +290,21 @@ private fun GlassTopBar(
                         Modifier.fillMaxSize().padding(end = 6.dp),
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
-                        content = actions,
-                    )
+                    ) {
+                        // 右上角关闭键：与左上角返回键同款玻璃圆钮，点一下直接退出本页
+                        if (onClose != null) {
+                            Box(Modifier.padding(end = 10.dp)) {
+                                GlassBackButton(
+                                    onClick = onClose,
+                                    backdrop = backdrop,
+                                    icon = MiuixIcons.Close,
+                                    contentDescription = "关闭",
+                                    glassAlpha = { barGlassAlpha.value },
+                                )
+                            }
+                        }
+                        actions()
+                    }
                 }
             }
         }
@@ -382,6 +400,7 @@ private fun GlassBackButton(
     onClick: () -> Unit,
     backdrop: Backdrop,
     icon: ImageVector = MiuixIcons.Back,
+    contentDescription: String = "返回",
     glassAlpha: () -> Float = { 1f },
 ) {
     val painter: Painter = androidx.compose.ui.graphics.vector.rememberVectorPainter(icon)
@@ -391,7 +410,7 @@ private fun GlassBackButton(
         onClick = onClick,
         backdrop = backdrop,
         icon = painter,
-        contentDescription = "返回",
+        contentDescription = contentDescription,
         iconSize = 18.dp,
         // 图标几何居中于 42dp 圆钮即可，不再额外偏移（之前左移 -2dp 导致视觉偏左）
         iconOffset = DpOffset.Zero,

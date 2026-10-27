@@ -138,6 +138,8 @@ fun PickerPage(
         // 左上角 = 返回上一级目录；到根了就只能退出选择器
         onBack = { if (dir == "/") onCancel() else goUp() },
         backIcon = if (dir == "/") MiuixIcons.Close else MiuixIcons.Back,
+        // 右上角关闭键 = 直接退出选择器，回到上一级界面（不是目录的上一级）
+        onClose = onCancel,
         bottomPadding = WindowInsets.navigationBars.asPaddingValues()
             .calculateBottomPadding() + 24.dp,
         listState = listState,
