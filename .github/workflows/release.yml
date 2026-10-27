@@ -1,13 +1,12 @@
 name: Release
 
 on:
-  # 只手动触发：一键发布 —— Actions 页面点 Run workflow，
-  # tag 留空则自动取 build.gradle.kts 的 versionName。
+  # 只手动触发：一键发布 —— Actions 页面点 Run workflow。
   # 不挂 push / tag 触发，避免每次提交都发一个 Release。
   workflow_dispatch:
     inputs:
-      tag:
-        description: '发布标签（如 v1.0.0）；留空自动取 versionName'
+      version:
+        description: '版本号（如 1.0.1，可带 v）；留空沿用 build.gradle.kts 现有版本，不改动'
         required: false
         default: ''
 
@@ -90,21 +89,47 @@ jobs:
           fi
           echo "keystore 校验通过（alias=$KEY_ALIAS）"
 
-      # 解析发布标签：手动输入优先，留空则从 build.gradle.kts 读 versionName
-      - name: Resolve version tag
+      # 解析版本号：
+      #  · 填了 → 用它（下一步自动改 versionName 并递增 versionCode）
+      #  · 留空 → 沿用 build.gradle.kts 现有 versionName，不改任何文件
+      - name: Resolve version
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
+          set -euo pipefail
+          INPUT="${{ github.event.inputs.version }}"
+          INPUT="${INPUT#v}"
+          if [ -z "$INPUT" ]; then
             VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
-            TAG="v${VERSION}"
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            echo "未填版本号，沿用现有 versionName: ${VERSION}"
+          else
+            if ! printf '%s' "$INPUT" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
+              echo "::error::版本号格式不对：${INPUT}（应为 1.0.1 这样的数字点分格式）"
+              exit 1
+            fi
+            VERSION="$INPUT"
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+            echo "将自动改为 versionName=${VERSION}，并递增 versionCode"
           fi
-          # 去掉开头的 v 得到纯版本号（如 1.0.0）
-          VERSION_NAME="${TAG#v}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
-          echo "发布标签: ${TAG}（版本 ${VERSION_NAME}）"
+          echo "version_name=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "目标版本: ${VERSION}（tag v${VERSION}）"
+
+      # 自动改版本号：versionName = 输入值，versionCode = 旧值 + 1
+      # versionCode 必须递增，否则新包装不上（覆盖安装会失败）
+      - name: Bump version in build.gradle.kts
+        if: steps.version.outputs.bump == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          FILE=app/build.gradle.kts
+          sed -i -E "s/versionName\s*=\s*\"[^\"]*\"/versionName = \"${VERSION}\"/" "$FILE"
+          OLD_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' "$FILE" | head -1)
+          NEW_CODE=$((OLD_CODE + 1))
+          sed -i -E "s/versionCode\s*=\s*[0-9]+/versionCode = ${NEW_CODE}/" "$FILE"
+          echo "versionName -> ${VERSION}，versionCode ${OLD_CODE} -> ${NEW_CODE}"
+          grep -nE 'versionCode|versionName' "$FILE"
 
       # 密码通过环境变量传给 Gradle（build.gradle.kts 读取）
       - name: Build release APK
@@ -133,6 +158,23 @@ jobs:
             echo "签名校验通过（存在 META-INF/*.RSA）"
           fi
 
+      # 构建成功后再提交版本号改动，避免构建失败留下一半的脏提交
+      - name: Commit version bump
+        if: steps.version.outputs.bump == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet app/build.gradle.kts; then
+            echo "build.gradle.kts 无变化（可能本来就是该版本），跳过提交"
+            exit 0
+          fi
+          git add app/build.gradle.kts
+          git commit -m "chore(release): 版本号 ${VERSION}"
+          git push origin HEAD:main
+
       # 幂等：同一版本一键重发时，先删掉旧 tag 再打新的
       - name: Create / update tag
         run: |
@@ -150,8 +192,16 @@ jobs:
       # update.md 由我们维护 —— 新版本内容写在文件顶部，历史段落自然下移留档，
       # 工作流只取顶部那一段，保证每个 Release 只描述自己这个版本。
       - name: Extract release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version_name }}
         run: |
+          set -euo pipefail
           if [ -f update.md ]; then
+            # 顶部标题与目标版本不一致时提醒：多半是忘了在 update.md 写本次更新
+            TOP=$(head -1 update.md)
+            if [ "$TOP" != "## v${VERSION} 更新" ]; then
+              echo "::warning::update.md 顶部是「${TOP}」，与目标版本 v${VERSION} 不一致 —— Release 说明可能不是这个版本的"
+            fi
             awk '/^## /{c++} c==1' update.md > release_notes.md
           fi
           if [ ! -s release_notes.md ]; then
@@ -160,7 +210,7 @@ jobs:
           echo "--- 本次 Release 说明 ---"
           cat release_notes.md
 
-      # 构建完直接发布 Release（手动触发与 tag 推送都会执行），附带签名 APK
+      # 构建完直接发布 Release，附带签名 APK
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

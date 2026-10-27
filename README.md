@@ -113,11 +113,12 @@ export ANDROID_HOME=<sdk 路径>
 
 Release 工作流从仓库 Secrets 读取签名密钥，密钥不进入代码库。流程为：
 
-1. 解析版本标签（手动输入 → 读 `versionName`）
-2. 从 Secrets 解出密钥
+1. 解析版本号：填 `1.0.1` 即自动把 `versionName` 改成它、`versionCode` 递增 1；留空则沿用现有版本不动
+2. 从 Secrets 解出密钥并校验（内容/密码/别名分别校验，出错直接指出是哪一项）
 3. R8 构建并签名
-4. 打标签并推送
-5. 发布 GitHub Release，附带 APK 与 `update.md` 里本次版本的更新说明
+4. 校验产物确实签上了名（没签上直接失败，不会发布）
+5. 提交版本号改动、打标签并推送
+6. 发布 GitHub Release，附带 APK 与 `update.md` 里本次版本的更新说明
 
 ---
 
@@ -129,9 +130,11 @@ Release 工作流从仓库 Secrets 读取签名密钥，密钥不进入代码库
 
 ---
 
-## 📝 更新日志
+## 📝 发版与更新日志
 
 更新说明维护在 [`update.md`](update.md)：**我们只管写** `update.md`，把新版本那段内容放在文件顶部，工作流会自动取顶部那一段填进对应的 Release，历史段落自然下移留档。
+
+发版只需两步：① 在 `update.md` 顶部写好本次更新；② Actions 里点 Release，版本号填 `1.0.1` 即可。版本号会自动写进 `build.gradle.kts` 并递增 `versionCode`，不用手改文件。
 
 ---
 
