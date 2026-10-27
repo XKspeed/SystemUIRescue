@@ -55,7 +55,7 @@ import kotlin.math.roundToInt
  */
 object UiConfigState {
     var enableBlur by mutableStateOf(true)
-    /** 二级页转场与预测性返回预览；关掉以后返回是瞬时的，不做缩放/圆角动画 */
+    /** 预测性返回预览；关掉以后返回仍有滑动动画，只是不做圆角裁剪与遮罩 */
     var predictiveBack by mutableStateOf(true)
 
     /**
@@ -224,7 +224,7 @@ fun UiSettingsPage(onBack: () -> Unit) {
                     SectionCard {
                         SwitchPreference(
                             title = "预测性返回",
-                            summary = "返回手势拖动时预览上一页；关闭后返回是瞬时的",
+                            summary = "返回手势拖动时预览上一页；关闭后仍有滑动动画，只是不做圆角与遮罩",
                             checked = UiConfigState.predictiveBack,
                             onCheckedChange = {
                                 UiConfigState.predictiveBack = it

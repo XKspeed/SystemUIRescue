@@ -179,13 +179,10 @@ fun App() {
     NavDisplay(
         backStack = backStack,
         onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
-        // 关掉「预测性返回」时用零动画转场：手势拖动没有缩放/圆角预览，
-        // 返回是瞬时的（NavTransitions.None 同时关掉了侧滑关闭）
-        transition = if (UiConfigState.predictiveBack) {
-            NavTransitions.MiuixDefault
-        } else {
-            NavTransitions.None
-        },
+        // 转场固定用 MiuixDefault：关掉「预测性返回」只去掉手势预览的圆角裁剪与遮罩，
+        // 普通返回的滑动动画必须保留 —— 之前这里退化成 NavTransitions.None，
+        // 结果连普通返回的动画也一起砍掉了，返回变成硬切。
+        transition = NavTransitions.MiuixDefault,
         effects = NavDisplayEffects(
             enableCornerClip = UiConfigState.predictiveBack,
             cornerClipRadius = 32.dp,
