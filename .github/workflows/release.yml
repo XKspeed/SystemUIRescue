@@ -196,7 +196,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version_name }}
         run: |
           set -euo pipefail
-          if [ -f update.md ]; then
+          # 默认空说明：update.md 为空时（例如首个正式版不写更新日志），Release 说明就留空
+          : > release_notes.md
+          if [ -s update.md ]; then
             # 顶部标题与目标版本不一致时提醒：多半是忘了在 update.md 写本次更新
             TOP=$(head -1 update.md)
             if [ "$TOP" != "## v${VERSION} 更新" ]; then
@@ -204,11 +206,12 @@ jobs:
             fi
             awk '/^## /{c++} c==1' update.md > release_notes.md
           fi
-          if [ ! -s release_notes.md ]; then
-            printf '详见下方提交记录。\n' > release_notes.md
+          if [ -s release_notes.md ]; then
+            echo "--- 本次 Release 说明 ---"
+            cat release_notes.md
+          else
+            echo "update.md 为空，本次 Release 不写更新说明"
           fi
-          echo "--- 本次 Release 说明 ---"
-          cat release_notes.md
 
       # 构建完直接发布 Release，附带签名 APK
       - name: Publish GitHub Release
