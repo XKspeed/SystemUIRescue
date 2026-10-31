@@ -1,7 +1,11 @@
 package com.xkspeed.systemuimount.ui
 
+import android.app.Activity
+import android.net.Uri
 import android.widget.Toast
 import java.io.File
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -39,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -47,7 +52,11 @@ import com.xkspeed.systemuimount.core.CrashLog
 import com.xkspeed.systemuimount.core.DaemonService
 import com.xkspeed.systemuimount.core.Module
 import com.xkspeed.systemuimount.core.ModuleState
+import com.xkspeed.systemuimount.core.ApkStore
+import com.xkspeed.systemuimount.core.LogConfig
 import com.xkspeed.systemuimount.core.Root
+import com.xkspeed.systemuimount.core.Update
+import com.xkspeed.systemuimount.core.UpdateInfo
 import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop as kyantRememberLayerBackdrop
 import com.xkspeed.systemuimount.ui.component.glass.GlassBottomNav
@@ -55,8 +64,10 @@ import com.xkspeed.systemuimount.ui.component.glass.GlassNavItem
 import com.xkspeed.systemuimount.ui.components.MiuixDialog
 import com.xkspeed.systemuimount.ui.util.LocalIsWideScreen
 import com.xkspeed.systemuimount.ui.util.shouldShowSplitPane
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -73,14 +84,14 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Home
-import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import kotlinx.serialization.Serializable
-import top.yukonga.miuix.kmp.nav.core.NavCornerClipMode
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -105,17 +116,26 @@ sealed interface Route : NavKey {
     data object ThirdPartyLicenses : Route
 
     @Serializable
-    data class Picker(val target: PickerTarget) : Route
+    data object About : Route
 }
+
+/** 底栏三页 默认停在中间的主页 */
+private const val HOME_PAGE = 1
 
 @Composable
 fun App() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // 返回（含预测性返回手势）由 NavDisplay 内部统一处理，这里不再注册 handler：
-    // 两层 handler 会互相抢事件，反而让手势失效。
+    // 返回（含预测性返回手势）由 NavDisplay 内部统一处理 这里不再注册 handler：
+    // 两层 handler 会互相抢事件 反而让手势失效
     val backStack = rememberNavBackStack<Route>(Route.Main)
+
+    // 连点两下同一个入口会往栈里塞两条一模一样的路由
+    // NavDisplay 随即抛 Duplicate contentKey 整个界面崩掉 这里拦住
+    fun push(route: Route) {
+        if (backStack.lastOrNull() != route) backStack.add(route)
+    }
     var state by remember { mutableStateOf(ModuleState()) }
     var rootOk by remember { mutableStateOf<Boolean?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -123,10 +143,49 @@ fun App() {
     var busySub by remember { mutableStateOf("") }
     var showRootDialog by remember { mutableStateOf(false) }
     var crashText by remember { mutableStateOf<String?>(null) }
-    // 记录当前弹窗对应的是哪份崩溃文件，关闭时用来标记「已看过」
+    // 记录当前弹窗对应的是哪份崩溃文件 关闭时用来标记「已看过」
     var crashFile by remember { mutableStateOf<File?>(null) }
 
-    // 关闭启动崩溃弹窗：标记这份崩溃已展示过，下次启动不再弹（只提醒一次）
+    // 更新：启动时后台查一次 10 秒超时 查不到就当没更新
+    var latest by remember { mutableStateOf<UpdateInfo?>(null) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
+
+    fun openRelease() {
+        val url = latest?.url?.takeIf { it.isNotBlank() }
+            ?: "https://github.com/XKspeed/SystemUIRescue/releases"
+        runCatching { uriHandler.openUri(url) }
+    }
+
+    fun checkUpdate(manual: Boolean) {
+        if (checkingUpdate) return
+        scope.launch {
+            checkingUpdate = true
+            val info = Update.check(10_000)
+            checkingUpdate = false
+            if (info == null) {
+                // 超时/断网：手动点才提示 启动那次安静失败
+                if (manual) toast(context, "检查更新失败 网络不通")
+                return@launch
+            }
+            if (Update.isNewer(info)) {
+                latest = info
+                toast(context, "发现 v${Update.label(info)} 更新")
+            } else {
+                latest = null
+                if (manual) toast(context, "已是最新版本 v${Update.currentName}")
+            }
+        }
+    }
+
+    // 抓取配置存在 App 自己这边 进界面先读一次
+    LaunchedEffect(Unit) { LogConfig.load(context) }
+
+    LaunchedEffect(Unit) {
+        if (UiConfigState.autoCheckUpdate) checkUpdate(manual = false)
+    }
+
+    // 关闭启动崩溃弹窗：标记这份崩溃已展示过 下次启动不再弹（只提醒一次）
     fun dismissCrash() {
         crashText = null
         val f = crashFile
@@ -134,21 +193,21 @@ fun App() {
         if (f != null) CrashLog.markCrashShown(f)
     }
 
-    // 启动时先看上次有没有崩：把堆栈直接摊给用户看，
-    // 不用去抓 logcat（没 root 抓不到）。同一份崩溃只弹一次。
+    // 启动时先看上次有没有崩：把堆栈直接摊给用户看
+    // 不用去抓 logcat（没 root 抓不到） 同一份崩溃只弹一次
     LaunchedEffect(Unit) {
         val file = CrashLog.pendingCrash()
         if (file != null) {
-            CrashLog.log("启动", "检测到上次崩溃记录，长度 ${file.length()}")
+            CrashLog.log("启动", "检测到上次崩溃记录 长度 ${file.length()}")
             crashText = file.readText()
             crashFile = file
         } else {
-            // 能走到这里说明这次启动没崩（或崩溃已展示过），清掉连续计数
+            // 能走到这里说明这次启动没崩（或崩溃已展示过） 清掉连续计数
             CrashLog.markAlive()
         }
     }
 
-    // 启动时拿不到 root 就直接提示，别让用户点进一堆"操作失败"
+    // 启动时拿不到 root 就直接提示 别让用户点进一堆"操作失败"
     LaunchedEffect(rootOk) {
         if (rootOk == false) showRootDialog = true
     }
@@ -157,7 +216,7 @@ fun App() {
         state = Module.readState()
     }
 
-    // 首次进入：先要 root，再读状态
+    // 首次进入：先要 root 再读状态
     LaunchedEffect(Unit) {
         rootOk = Root.available()
         if (rootOk == true) runCatching { refresh() }
@@ -171,24 +230,148 @@ fun App() {
         }
     }
 
-    // 守护状态与前台服务保持一致：运行就挂服务，停了就撤，避免进程被冻结
+    // 守护状态与前台服务保持一致：运行就挂服务 停了就撤 避免进程被冻结
     LaunchedEffect(state.daemonRunning) {
         if (state.daemonRunning) DaemonService.start(context) else DaemonService.stop(context)
     }
 
+    // 选文件：固定拉 MT 管理器 不再弹来源选择
+    var pendingPick by remember { mutableStateOf<PickerTarget?>(null) }
+
+    fun applyPicked(target: PickerTarget, path: String) {
+        scope.launch {
+            if (target == PickerTarget.RESCUE) {
+                // 复制到模块根并统一改名 MiuiSystemUI.apk
+                busy = true
+                busyTitle = "救砖界面至模块根目录"
+                busySub = "正在复制…"
+                val out = Module.prepare(path)
+                if (out.contains("OK")) {
+                    busySub = "已完成"
+                    runCatching { refresh() }
+                } else {
+                    busyTitle = "复制失败"
+                    busySub = firstLine(out)
+                }
+                delay(600)
+                busy = false
+                busyTitle = null
+            } else {
+                Module.setConf("TARGET_APK_PATH", path)
+                runCatching { refresh() }
+                toast(context, "已选择待测界面")
+            }
+        }
+    }
+
+    fun handlePicked(target: PickerTarget, uri: Uri) {
+        // 复制动辄上百兆 不能压在主线线程上 否则选择器刚回来就 ANR
+        scope.launch {
+            val file = withContext(Dispatchers.IO) { copyPickedFile(context, uri) }
+            if (file == null) {
+                toast(context, "读取失败 这个文件管理器给的地址打不开 换一个再试")
+                return@launch
+            }
+            if (!file.looksLikeApk()) {
+                withContext(Dispatchers.IO) { file.delete() }
+                toast(context, "不是 apk 请选择后缀为 apk 的安装包")
+                return@launch
+            }
+
+            // 主页：不校验包名（测的可能根本不是 SystemUI）
+            // 只拦一件事 —— 待测 apk 和救砖 apk 是同一个文件
+            if (target == PickerTarget.MAIN_RESCUE || target == PickerTarget.MAIN_TARGET) {
+                val isRescue = target == PickerTarget.MAIN_RESCUE
+                // 收进私有目录 只有重新选才会覆盖旧的
+                val dst = withContext(Dispatchers.IO) {
+                    ApkStore.import(
+                        context,
+                        file,
+                        if (isRescue) ApkStore.RESCUE else ApkStore.TARGET,
+                    ).also { file.delete() }
+                }
+                if (dst == null) {
+                    toast(context, "保存失败 存储空间可能不够")
+                    return@launch
+                }
+                val other = if (isRescue) LogConfig.targetPath else LogConfig.rescuePath
+                val same = withContext(Dispatchers.IO) {
+                    ApkStore.sameContent(dst.absolutePath, other)
+                }
+                if (same) {
+                    // 两份一样 崩了装回去等于什么都没换
+                    withContext(Dispatchers.IO) { dst.delete() }
+                    if (isRescue) {
+                        LogConfig.rescuePath = ""
+                        LogConfig.rescueSize = 0L
+                    } else {
+                        LogConfig.targetPath = ""
+                        LogConfig.targetSize = 0L
+                    }
+                    LogConfig.save(context)
+                    toast(context, "待测apk不能和救砖apk是同一个文件")
+                    return@launch
+                }
+                if (isRescue) {
+                    LogConfig.rescuePath = dst.absolutePath
+                    LogConfig.rescueSize = dst.length()
+                    toast(context, "已选择救砖apk")
+                } else {
+                    LogConfig.targetPath = dst.absolutePath
+                    LogConfig.targetSize = dst.length()
+                    toast(context, "已选择待测apk")
+                }
+                LogConfig.save(context)
+                return@launch
+            }
+
+            // 界面页：装错界面救砖流程直接废掉 这里必须拦住
+            val pkg = withContext(Dispatchers.IO) { packageNameOf(context, file) }
+            if (pkg != SYSTEMUI_PACKAGE) {
+                withContext(Dispatchers.IO) { file.delete() }
+                toast(
+                    context,
+                    if (pkg == null) "这个文件不是有效的 apk" else "包名是 $pkg 不是系统界面",
+                )
+                return@launch
+            }
+            applyPicked(target, file.absolutePath)
+        }
+    }
+
+    val pickLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val target = pendingPick
+        pendingPick = null
+        val uri = result.data?.data
+        if (result.resultCode == Activity.RESULT_OK && uri != null && target != null) {
+            handlePicked(target, uri)
+        }
+    }
+
+    /** 固定走 MT 管理器 设备上正版优先 没有再退共存版 */
+    fun pickFile(target: PickerTarget) {
+        val source = queryMtPickers(context).firstOrNull()
+        if (source == null) {
+            toast(context, "未找到mt管理器 你连这个都没有吗")
+            return
+        }
+        pendingPick = target
+        runCatching { pickLauncher.launch(buildSourcePickIntent(source.component)) }
+            .onFailure {
+                pendingPick = null
+                toast(context, "打不开 ${source.label}")
+            }
+    }
+
     NavDisplay(
         backStack = backStack,
-        onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
-        // 转场固定用 MiuixDefault：关掉「预测性返回」只去掉手势预览的圆角裁剪与遮罩，
-        // 普通返回的滑动动画必须保留 —— 之前这里退化成 NavTransitions.None，
-        // 结果连普通返回的动画也一起砍掉了，返回变成硬切。
+        // 转场用 MiuixDefault 圆角裁剪直接读系统圆角 和 LiftArc 一致
+        // 返回（含预测性返回手势）全交给 NavDisplay 自己接管
         transition = NavTransitions.MiuixDefault,
         effects = NavDisplayEffects(
-            enableCornerClip = UiConfigState.predictiveBack,
-            cornerClipRadius = 32.dp,
-            cornerClipMode = NavCornerClipMode.All,
-            dimAmount = if (UiConfigState.predictiveBack) 0.5f else 0f,
-            blockInputDuringTransition = false,
+            cornerClipRadius = rememberNavSystemCornerRadius(),
             backdropColor = MiuixTheme.colorScheme.surface,
         ),
     ) {
@@ -197,8 +380,10 @@ fun App() {
                 state = state,
                 rootOk = rootOk,
                 busy = busy,
-                onPickRescue = { backStack.add(Route.Picker(PickerTarget.RESCUE)) },
-                onPickTarget = { backStack.add(Route.Picker(PickerTarget.TARGET)) },
+                onPickRescue = { pickFile(PickerTarget.RESCUE) },
+                onPickTarget = { pickFile(PickerTarget.TARGET) },
+                onPickMainRescue = { pickFile(PickerTarget.MAIN_RESCUE) },
+                onPickMainTarget = { pickFile(PickerTarget.MAIN_TARGET) },
                 onStart = start@{
                     val target = state.targetPath
                     if (target.isBlank()) {
@@ -236,11 +421,20 @@ fun App() {
                         toast(context, firstLine(out).ifBlank { "已停止" })
                     }
                 },
-                onOpenLogs = { backStack.add(Route.Logs) },
-                onOpenUiSettings = { backStack.add(Route.UiSettings) },
-                onOpenVolumeCheck = { backStack.add(Route.VolumeCheck) },
-                onOpenCrashLog = { backStack.add(Route.CrashLogs) },
-                onOpenThirdPartyLicenses = { backStack.add(Route.ThirdPartyLicenses) },
+                onOpenLogs = { push(Route.Logs) },
+                onOpenUiSettings = { push(Route.UiSettings) },
+                onOpenVolumeCheck = { push(Route.VolumeCheck) },
+                onOpenCrashLog = { push(Route.CrashLogs) },
+                onOpenThirdPartyLicenses = { push(Route.ThirdPartyLicenses) },
+                onOpenAbout = { push(Route.About) },
+                latest = latest,
+                onOpenRelease = { openRelease() },
+                onCheckUpdate = {
+                    // 点了至少要有反应 否则像没按到
+                    toast(context, "正在检查更新…")
+                    checkUpdate(manual = true)
+                },
+                checkingUpdate = checkingUpdate,
                 onSetConf = { k, v ->
                     scope.launch {
                         Module.setConf(k, v)
@@ -254,12 +448,21 @@ fun App() {
                         if (!out.contains("OK")) toast(context, firstLine(out))
                     }
                 },
+                onSetCrashLimit = { limit ->
+                    scope.launch {
+                        val out = Module.setCrashLimit(limit)
+                        runCatching { refresh() }
+                        if (!out.contains("OK")) toast(context, firstLine(out))
+                    }
+                },
             )
         }
 
         entry<Route.Logs> {
             LogPage(
-                running = state.daemonRunning,
+                title = "调试日志",
+                autoRefresh = state.debug,
+                loader = { lines -> Module.tailDebug(lines) },
                 onBack = { backStack.removeLastOrNull() },
             )
         }
@@ -283,41 +486,29 @@ fun App() {
             ThirdPartyLicensesPage(onBack = { backStack.removeLastOrNull() })
         }
 
-        entry<Route.Picker> { r ->
-            PickerPage(
-                target = r.target,
-                onCancel = { backStack.removeLastOrNull() },
-                onPicked = { path ->
-                    backStack.removeLastOrNull()
-                    scope.launch {
-                        if (r.target == PickerTarget.RESCUE) {
-                            // 复制到模块根并统一改名 MiuiSystemUI.apk
-                            busy = true
-                            busyTitle = "救砖界面至模块根目录"
-                            busySub = "正在复制…"
-                            val out = Module.prepare(path)
-                            if (out.contains("OK")) {
-                                busySub = "已完成"
-                                runCatching { refresh() }
-                            } else {
-                                busyTitle = "复制失败"
-                                busySub = firstLine(out)
-                            }
-                            delay(600)
-                            busy = false
-                            busyTitle = null
-                        } else {
-                            Module.setConf("TARGET_APK_PATH", path)
-                            runCatching { refresh() }
-                            toast(context, "已选择待测界面")
-                        }
-                    }
-                },
+        entry<Route.About> {
+            AboutPage(
+                state = state,
+                latest = latest,
+                onOpenRelease = { openRelease() },
+                onOpenThirdPartyLicenses = { push(Route.ThirdPartyLicenses) },
+                onBack = { backStack.removeLastOrNull() },
             )
         }
+
     }
 
-    // 等待框：复制几十兆 APK 时要看得见状态，且不允许误触关闭
+    // 关掉预测性返回预览时把返回事件拦在 NavDisplay 前面：
+    // 手势拖动期间页面完全不跟手（等于把手势进度上限压成 0）
+    // 松手提交后才 pop 播放普通返回动画
+    val noPreviewBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = noPreviewBackState,
+        isBackEnabled = !UiConfigState.predictiveBack && backStack.size > 1,
+        onBackCompleted = { backStack.removeLastOrNull() },
+    )
+
+    // 等待框：复制几十兆 APK 时要看得见状态 且不允许误触关闭
     busyTitle?.let { title ->
         Dialog(
             onDismissRequest = {},
@@ -356,7 +547,7 @@ fun App() {
         }
     }
 
-    // 上次崩溃的现场：直接把堆栈摊出来，用户复制走就能贴给我
+    // 上次崩溃的现场：直接把堆栈摊出来 用户复制走就能贴给我
     crashText?.let { text ->
         MiuixDialog(
             title = "上次启动时崩溃了",
@@ -364,7 +555,7 @@ fun App() {
         ) {
             if (UiConfigState.safeMode) {
                 Text(
-                    "已连续崩溃多次，已自动关闭玻璃效果与预测性返回（安全模式）。",
+                    "已连续崩溃多次 已自动关闭玻璃效果（安全模式）",
                     color = MiuixTheme.colorScheme.error,
                     style = MiuixTheme.textStyles.subtitle,
                 )
@@ -408,22 +599,22 @@ fun App() {
         }
     }
 
-    // 没有 root：直接给两个选择，别让用户点进一堆"操作失败"
+    // 没有 root：直接给两个选择 别让用户点进一堆"操作失败"
     if (showRootDialog) {
         MiuixDialog(
             title = "需要 ROOT 权限",
             onDismiss = { showRootDialog = false },
         ) {
             Text(
-                "本应用通过 su 调用模块里的 webctl.sh 和 action.sh。" +
-                    "没有 root 就读不到模块目录，也起不了救砖守护。",
+                "本应用通过 su 调用脚本读取配置 没有 root 就改不了运行模式 " +
+                    "也起不了救砖守护",
                 color = MiuixTheme.colorScheme.onSurface,
                 style = MiuixTheme.textStyles.subtitle,
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 "请在 su 授权框里选「允许」后重新打开；" +
-                    "如果之前点过拒绝，去 root 管理器的授权列表里改回来。",
+                    "如果之前点过拒绝 去 root 管理器的授权列表里改回来",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 style = MiuixTheme.textStyles.subtitle,
             )
@@ -441,6 +632,7 @@ fun App() {
             }
         }
     }
+
 }
 
 @Composable
@@ -450,6 +642,8 @@ private fun MainScaffold(
     busy: Boolean,
     onPickRescue: () -> Unit,
     onPickTarget: () -> Unit,
+    onPickMainRescue: () -> Unit,
+    onPickMainTarget: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenLogs: () -> Unit,
@@ -457,49 +651,55 @@ private fun MainScaffold(
     onOpenVolumeCheck: () -> Unit,
     onOpenCrashLog: () -> Unit,
     onOpenThirdPartyLicenses: () -> Unit,
+    onOpenAbout: () -> Unit,
+    latest: UpdateInfo?,
+    onOpenRelease: () -> Unit,
+    onCheckUpdate: () -> Unit,
+    checkingUpdate: Boolean,
     onSetConf: (String, String) -> Unit,
     onRescueToggle: (Boolean) -> Unit,
+    onSetCrashLimit: (Int) -> Unit,
 ) {
-    val pagerState = rememberPagerState(pageCount = { 3 })
-    var selected by remember { mutableIntStateOf(0) }
+    // 三页：界面 / 主页 / 设置 默认落在中间的主页
+    val pagerState = rememberPagerState(initialPage = HOME_PAGE, pageCount = { 3 })
+    var selected by remember { mutableIntStateOf(HOME_PAGE) }
     val navItems = remember {
         listOf(
+            GlassNavItem("界面", MiuixIcons.Layers),
             GlassNavItem("主页", MiuixIcons.Home),
             GlassNavItem("设置", MiuixIcons.Settings),
-            GlassNavItem("关于", MiuixIcons.Info),
         )
     }
     val scope = rememberCoroutineScope()
 
     // 渲染阶段埋点：崩了能知道是第几个 tab / 哪一层出的问题
     LaunchedEffect(selected) {
-        CrashLog.stage("主界面 tab=${listOf("主页", "设置", "关于").getOrElse(selected) { "?" }}")
+        CrashLog.stage("主界面 tab=${listOf("界面", "主页", "设置").getOrElse(selected) { "?" }}")
     }
 
     // 用 settledPage（动画结束后的落点）而不是 currentPage：
-    // 底栏点「关于」时 pager 从 0 滚到 2，currentPage 中途会路过 1（设置），
-    // 若用它同步 selected，底栏会在动画中途把选中态跳到「设置」，
-    // 反过来又触发一次 animateScrollToPage(1) —— 结果永远停在设置页，
-    // 这正是「关于页必须在设置页才能点底栏进入」的根因。
+    // 底栏从「界面」点到「设置」时 currentPage 中途会路过 1（主页）
+    // 若用它同步 selected 底栏会在动画中途跳到「主页」
+    // 反过来又触发一次 animateScrollToPage(1) —— 结果永远停在中间页
     LaunchedEffect(pagerState.settledPage) {
         selected = pagerState.settledPage
     }
 
-    // 系统返回键：在「设置」「关于」上按返回 → 回到主页，而不是退出应用
-    // （底栏三页是同一个 pager，不是三条路由，所以要在这一层自己吃掉返回）。
+    // 系统返回键：不在主页时按返回 → 回到主页 而不是退出应用
+    // （底栏三页是同一个 pager 不是三条路由 所以要在这一层自己吃掉返回）
     val mainBackState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
         state = mainBackState,
-        isBackEnabled = pagerState.currentPage != 0,
-        onBackCompleted = { scope.launch { pagerState.animateScrollToPage(0) } },
+        isBackEnabled = pagerState.currentPage != HOME_PAGE,
+        onBackCompleted = { scope.launch { pagerState.animateScrollToPage(HOME_PAGE) } },
     )
 
-    // 底栏采样源：kyant backdrop，采样整个页面内容（含滚动中的列表）
+    // 底栏采样源：kyant backdrop 采样整个页面内容（含滚动中的列表）
     val surfaceColor = MiuixTheme.colorScheme.surface
     val backdrop = kyantRememberLayerBackdrop()
     CompositionLocalProvider(LocalIsWideScreen provides shouldShowSplitPane()) {
-        // 底栏是浮在内容上的（内容延伸到它后面，玻璃采样才有东西），
-        // 所以不走 Scaffold 的 bottomBar —— 那会把内容顶开，玻璃后面就是空背景
+        // 底栏是浮在内容上的（内容延伸到它后面 玻璃采样才有东西）
+        // 所以不走 Scaffold 的 bottomBar —— 那会把内容顶开 玻璃后面就是空背景
         val pagePadding = PaddingValues(
             bottom = WindowInsets.navigationBars.asPaddingValues()
                 .calculateBottomPadding() + 70.dp,
@@ -509,20 +709,24 @@ private fun MainScaffold(
                 .fillMaxSize()
                 .background(surfaceColor),
         ) {
-            // 采样层只包住页面内容。底栏必须放在这个 Box 之外 ——
-            // 否则底栏自己被录进它要采样的那一层，形成自采样递归，绘制时直接崩。
-            // （Sonify 的 NavPageVisual / NavBottomVisual 同样是两个平级节点。）
+            // 采样层只包住页面内容 底栏必须放在这个 Box 之外 ——
+            // 否则底栏自己被录进它要采样的那一层 形成自采样递归 绘制时直接崩
+            // （Sonify 的 NavPageVisual / NavBottomVisual 同样是两个平级节点 ）
             Box(
                 Modifier
                     .fillMaxSize()
                     .kyantLayerBackdrop(backdrop),
             ) {
+                // 只认底栏切页：左右滑动会把「主页」误带到设置/界面
+                // userScrollEnabled=false 只关手势 底栏的 animateScrollToPage 照常走
                 HorizontalPager(
                     state = pagerState,
                     beyondViewportPageCount = 1,
+                    userScrollEnabled = false,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
                     when (page) {
+                        // 界面：选救砖 / 待测 与启动测试
                         0 -> HomePage(
                             padding = pagePadding,
                             state = state,
@@ -532,25 +736,33 @@ private fun MainScaffold(
                             onPickTarget = onPickTarget,
                             onStart = onStart,
                             onStop = onStop,
-                            onOpenLogs = onOpenLogs,
-                            onOpenVolumeCheck = onOpenVolumeCheck,
-                            onOpenCrashLog = onOpenCrashLog,
                         )
 
-                        1 -> SettingsPage(
+                        // 主页：自己的测试脚本 自带开抓与救砖 不碰模块守护
+                        1 -> MainPage(
+                            padding = pagePadding,
+                            state = state,
+                            rootOk = rootOk,
+                            latest = latest,
+                            onOpenRelease = onOpenRelease,
+                            onPickRescue = onPickMainRescue,
+                            onPickTarget = onPickMainTarget,
+                        )
+
+                        // 设置：运行 / 自动救砖 / 外观 / 调试 / 关于入口
+                        else -> SettingsPage(
                             padding = pagePadding,
                             state = state,
                             onSetConf = onSetConf,
                             onRescueToggle = onRescueToggle,
+                            onSetCrashLimit = onSetCrashLimit,
                             onOpenUiSettings = onOpenUiSettings,
-                        )
-
-                        // 关于页是一级 tab（底栏页），无左上角返回键；
-                        // 第三方许可证走二级界面，从「第三方许可证」入口进入。
-                        else -> AboutPage(
-                            padding = pagePadding,
-                            state = state,
-                            onOpenThirdPartyLicenses = onOpenThirdPartyLicenses,
+                            onOpenDebugLog = onOpenLogs,
+                            onOpenCrashLog = onOpenCrashLog,
+                            onOpenVolumeCheck = onOpenVolumeCheck,
+                            onOpenAbout = onOpenAbout,
+                            onCheckUpdate = onCheckUpdate,
+                            checkingUpdate = checkingUpdate,
                         )
                     }
                 }
@@ -578,7 +790,7 @@ private fun MainScaffold(
     }
 }
 
-/** webctl 的输出首行去掉 FAIL 前缀，拿来当提示语 */
+/** webctl 的输出首行去掉 FAIL 前缀 拿来当提示语 */
 private fun firstLine(out: String): String =
     out.lineSequence().firstOrNull { it.isNotBlank() }
         ?.removePrefix("FAIL")?.trim().orEmpty()

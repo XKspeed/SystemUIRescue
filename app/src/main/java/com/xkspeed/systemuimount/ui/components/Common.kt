@@ -35,11 +35,11 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 分组卡片。
+ * 分组卡片
  *
- * 里面直接放 Miuix 的 Preference 组件：它们自带 insideMargin，
- * 这里再补水平内边距会变成双重缩进。
- * 自定义内容（InfoRow 之类）自己负责留白。
+ * 里面直接放 Miuix 的 Preference 组件：它们自带 insideMargin
+ * 这里再补水平内边距会变成双重缩进
+ * 自定义内容（InfoRow 之类）自己负责留白
  */
 @Composable
 fun SectionCard(
@@ -102,8 +102,8 @@ fun InfoRow(label: String, value: String) {
 }
 
 /**
- * 步进器：标题 + 当前值 + 减/加。
- * Miuix 没有现成的 Stepper，这里用两个圆钮拼，视觉和 Preference 行一致。
+ * 步进器：标题 + 当前值 + 减/加
+ * Miuix 没有现成的 Stepper 这里用两个圆钮拼 视觉和 Preference 行一致
  */
 @Composable
 fun StepperRow(
@@ -210,7 +210,7 @@ fun DialogActions(
     }
 }
 
-/** 顶栏返回按钮：用 Miuix 自带的返回箭头，RTL 下会自动镜像 */
+/** 顶栏返回按钮：用 Miuix 自带的返回箭头 RTL 下会自动镜像 */
 @Composable
 fun BackIcon(onClick: () -> Unit, modifier: Modifier = Modifier) {
     IconButton(modifier = modifier, onClick = onClick) {

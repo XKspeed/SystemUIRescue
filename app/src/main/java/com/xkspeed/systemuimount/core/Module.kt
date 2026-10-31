@@ -3,9 +3,10 @@ package com.xkspeed.systemuimount.core
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * 一次 boot 取回的全部状态（对应 webctl.sh boot 的 ## 分节输出 + settings.conf）。
- */
+/** 日志 + 救砖模式的崩溃上限 比系统默认的 12 宽 给音量键留出反应时间 */
+const val CRASH_LIMIT_MANUAL = 30
+
+/** 一次 boot 取回的全部状态（对应 webctl.sh boot 的 ## 分节输出 + settings.conf） */
 data class ModuleState(
     // ##VERSION
     val version: String = "",
@@ -52,7 +53,7 @@ data class DirEntry(
 
 object Module {
 
-    /** 读取完整状态：一次 boot + 一次 cat 配置，都在 root shell 里。 */
+    /** 读取完整状态：一次 boot + 一次 cat 配置 都在 root shell 里  */
     suspend fun readState(): ModuleState = withContext(Dispatchers.IO) {
         val boot = Root.webctl("boot")
         val conf = Root.exec("cat ${Root.q(Root.CONF)} 2>/dev/null")
@@ -90,7 +91,7 @@ object Module {
         )
     }
 
-    /** 写一个配置项。值里的 sed 元字符先转义，避免路径带 & # 时把文件写坏。 */
+    /** 写一个配置项 值里的 sed 元字符先转义 避免路径带 & # 时把文件写坏  */
     suspend fun setConf(key: String, value: String): Boolean = withContext(Dispatchers.IO) {
         if (!key.matches(Regex("^[A-Z_]+$"))) return@withContext false
         val sedEsc = value
@@ -104,7 +105,7 @@ object Module {
             append("else printf '%s\\n' \"$key=$value\" >> $f; fi")
         }
         Root.exec(cmd)
-        // 读回确认，不假设 sed 一定成功
+        // 读回确认 不假设 sed 一定成功
         val back = Root.exec("grep \"^$key=\" $f 2>/dev/null | tail -1").trim()
         back == "$key=$value"
     }
@@ -114,10 +115,10 @@ object Module {
         Root.webctl("prepare ${Root.q(src)}")
 
     /**
-     * 启动测试。
+     * 启动测试
      *
-     * 救砖文件直接传模块根那份（用户已经在主页选过），
-     * webctl 内部会用 cmp 判断是否需要重新复制。
+     * 救砖文件直接传模块根那份（用户已经在主页选过）
+     * webctl 内部会用 cmp 判断是否需要重新复制
      */
     suspend fun testRun(target: String): String =
         Root.webctl("test-run ${Root.q(Root.RESCUE_APK)} ${Root.q(target)}")
@@ -125,8 +126,8 @@ object Module {
     suspend fun stop(): String = Root.webctl("stop")
 
     /**
-     * 音量键校验（webroot/check.sh）。
-     * up / down 会阻塞到用户按键或 10 秒超时，所以必须放在 IO 线程。
+     * 音量键校验（webroot/check.sh）
+     * up / down 会阻塞到用户按键或 10 秒超时 所以必须放在 IO 线程
      */
     suspend fun check(sub: String): String = withContext(Dispatchers.IO) {
         Root.exec("sh " + Root.q(Root.MODULE_DIR + "/webroot/check.sh") + " " + sub)
@@ -135,7 +136,28 @@ object Module {
     suspend fun setRescueOff(off: Boolean): String =
         Root.webctl(if (off) "rescue off" else "rescue on")
 
-    /** 目录列表（root 权限，能看到 /data 下的东西） */
+    /**
+     * 直接把 AMS 崩溃上限改成指定值
+     *
+     * 日志 + 救砖模式用 30：系统默认 12 太早
+     * SystemUI 反复崩几次就到顶 音量键还没按下去就被系统收走了
+     * 增强救砖要屏蔽系统救援（999999）走 [setRescueOff] 这里不重复实现
+     */
+    suspend fun setCrashLimit(limit: Int): String = withContext(Dispatchers.IO) {
+        Root.exec(
+            "settings put global activity_manager_constants " +
+                "\"process_crash_count_limit=$limit,min_crash_interval=120000," +
+                "process_crash_count_reset_interval=43200000\" 2>/dev/null",
+        )
+        val back = Root.exec(
+            "dumpsys activity settings 2>/dev/null | " +
+                "grep -oE 'process_crash_count_limit=[0-9]+' | cut -d= -f2 | head -1",
+        ).trim()
+        if (back == limit.toString()) "OK 崩溃上限已设为 $limit"
+        else "FAIL 设置未生效（当前 ${back.ifBlank { "unknown" }}）"
+    }
+
+    /** 目录列表（root 权限 能看到 /data 下的东西） */
     suspend fun ls(dir: String): List<DirEntry> {
         val out = Root.webctl("ls ${Root.q(dir)}")
         if (out.startsWith("FAIL")) return emptyList()
@@ -153,7 +175,7 @@ object Module {
         }.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() })).toList()
     }
 
-    /** 最近日志：优先读最新日志文件的尾部，拿不到就退回 webctl output */
+    /** 最近日志：优先读最新日志文件的尾部 拿不到就退回 webctl output */
     suspend fun tailLog(lines: Int = 400): String = withContext(Dispatchers.IO) {
         val cmd = "d=\$(grep '^LOG_DIR=' ${Root.q(Root.CONF)} 2>/dev/null | cut -d= -f2-); " +
             "[ -z \"\$d\" ] && d=/data/adb/systemui_mount_log; " +
@@ -163,6 +185,12 @@ object Module {
         if (out.isNotBlank()) out else Root.webctl("output")
     }
 
+    /** 脚本的 debug.log 只有 DEBUG=true 时才写 没有文件就返回空 */
+    suspend fun tailDebug(lines: Int = 400): String = withContext(Dispatchers.IO) {
+        val f = Root.q(Root.MODULE_DIR + "/config/debug.log")
+        Root.exec("[ -s $f ] && tail -n $lines $f")
+    }
+
     fun fmtSize(bytes: Long): String = when {
         bytes >= 1073741824L -> String.format("%.1f GB", bytes / 1073741824.0)
         bytes >= 1048576L -> String.format("%.1f MB", bytes / 1048576.0)
@@ -170,13 +198,13 @@ object Module {
         else -> "$bytes B"
     }
 
-    /** 日志时间戳形如 "2026-10-25 20:58:31.123456789 +0800"，只留到分钟 */
+    /** 日志时间戳形如"2026-10-25 20:58:31.123456789 +0800" 只留到分钟 */
     fun tidyTime(raw: String): String =
         if (raw.length >= 16) raw.substring(0, 16) else raw
 
     // ---------- 解析 ----------
 
-    /** "##SECTION" 分节，节内是 key=value */
+    /** "##SECTION" 分节 节内是 key=value */
     private fun parseSections(text: String): Map<String, Map<String, String>> {
         val out = LinkedHashMap<String, MutableMap<String, String>>()
         var cur: String? = null
@@ -194,7 +222,7 @@ object Module {
         return out
     }
 
-    /** settings.conf：忽略注释与空行，去掉值两端引号 */
+    /** settings.conf：忽略注释与空行 去掉值两端引号 */
     private fun parseConf(text: String): Map<String, String> {
         val out = LinkedHashMap<String, String>()
         text.lineSequence().forEach { raw ->

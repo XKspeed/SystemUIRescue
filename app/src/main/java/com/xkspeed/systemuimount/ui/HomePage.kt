@@ -1,5 +1,8 @@
 package com.xkspeed.systemuimount.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,20 +21,28 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.xkspeed.systemuimount.core.CrashLog
+import androidx.compose.ui.unit.sp
 import com.xkspeed.systemuimount.core.Module
 import com.xkspeed.systemuimount.core.ModuleState
+import kotlinx.coroutines.delay
 import com.xkspeed.systemuimount.ui.component.glass.ScrollPage
 import com.xkspeed.systemuimount.ui.components.InfoRow
 import com.xkspeed.systemuimount.ui.components.SectionCard
@@ -61,9 +72,6 @@ fun HomePage(
     onPickTarget: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onOpenLogs: () -> Unit,
-    onOpenVolumeCheck: () -> Unit,
-    onOpenCrashLog: () -> Unit,
 ) {
     val isWideScreen = LocalIsWideScreen.current
     val scrollBehavior = MiuixScrollBehavior()
@@ -74,10 +82,40 @@ fun HomePage(
     val canStart = rootOk == true && state.rescueReady && state.targetOk &&
         !state.daemonRunning && !busy
 
+    // 守护运行时把状态卡撑开 直接在这里看脚本输出 停下来再收回
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val logListState = rememberLazyListState()
+    var logLines by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(state.daemonRunning) {
+        if (!state.daemonRunning) return@LaunchedEffect
+        while (true) {
+            val text = Module.tailLog(300)
+            logLines = if (text.isBlank()) emptyList() else text.lines()
+            delay(1500)
+        }
+    }
+
+    LaunchedEffect(logLines.size) {
+        if (logLines.isNotEmpty()) {
+            runCatching { logListState.scrollToItem(logLines.size - 1) }
+        }
+    }
+
+    val logAreaHeight by animateDpAsState(
+        targetValue = if (state.daemonRunning) {
+            (screenHeight * 0.3f - 96.dp).coerceAtLeast(120.dp)
+        } else {
+            0.dp
+        },
+        animationSpec = tween(380, easing = FastOutSlowInEasing),
+        label = "logArea",
+    )
+
     ScrollPage(
-        title = "SystemUI救援",
-        subtitle = if (state.version.isNotBlank()) "v${state.version}" else null,
-        // 底栏高度由外层 Scaffold 给出，再加一点呼吸
+        title = "界面",
+        subtitle = if (state.version.isNotBlank()) "救砖与界面替换 · 模块 v${state.version}" else "救砖与界面替换",
+        // 底栏高度由外层 Scaffold 给出 再加一点呼吸
         bottomPadding = padding.calculateBottomPadding() + 16.dp,
     ) {
                 // ---- 状态卡 ----
@@ -110,6 +148,43 @@ fun HomePage(
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 style = MiuixTheme.textStyles.subtitle,
                             )
+                            if (logAreaHeight > 0.dp) {
+                                Spacer(Modifier.height(10.dp))
+                                HorizontalDivider(color = MiuixTheme.colorScheme.dividerLine)
+                                Spacer(Modifier.height(8.dp))
+                                Box(
+                                    Modifier.fillMaxWidth()
+                                        .height(logAreaHeight)
+                                        .clipToBounds()
+                                ) {
+                                    if (logLines.isEmpty()) {
+                                        Text(
+                                            "等待脚本输出…",
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            style = MiuixTheme.textStyles.subtitle,
+                                        )
+                                    } else {
+                                        LazyColumn(state = logListState) {
+                                            itemsIndexed(logLines) { _, line ->
+                                                Text(
+                                                    line.ifEmpty { " " },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    color = when {
+                                                        line.contains("FAIL") || line.contains("错误") ->
+                                                            MiuixTheme.colorScheme.error
+                                                        line.contains("OK") || line.contains("成功") ->
+                                                            MiuixTheme.colorScheme.primary
+                                                        else -> MiuixTheme.colorScheme.onSurface
+                                                    },
+                                                    fontSize = 10.sp,
+                                                    lineHeight = 14.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -129,7 +204,7 @@ fun HomePage(
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "请在弹出的授权框里允许本应用使用 su，然后重新打开。",
+                                    "请在弹出的授权框里允许本应用使用 su 然后重新打开",
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     style = MiuixTheme.textStyles.subtitle,
                                 )
@@ -195,47 +270,13 @@ fun HomePage(
                                     rootOk != true -> "等待 root 授权"
                                     !state.rescueReady -> "先选一个救砖界面（能正常开机的 SystemUI）"
                                     !state.targetOk -> "再选一个待测界面"
-                                    state.daemonRunning -> "守护已启动，音量+ 触发救砖，音量- 取消"
-                                    else -> "启动后 5 秒自动替换界面，随后监听崩溃与音量键"
+                                    state.daemonRunning -> "守护已启动 音量+ 触发救砖 音量- 取消"
+                                    else -> "启动后 5 秒自动替换界面 随后监听崩溃与音量键"
                                 },
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 style = MiuixTheme.textStyles.subtitle,
                             )
                         }
-                    }
-                }
-
-                // ---- 其他 ----
-                item { SmallTitle("其他") }
-                item {
-                    SectionCard {
-                        ArrowPreference(
-                            title = "查看日志",
-                            summary = if (state.daemonRunning) "实时刷新" else "最近一次运行的输出",
-                            onClick = onOpenLogs,
-                        )
-                        HorizontalDivider(
-                            color = MiuixTheme.colorScheme.dividerLine,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        ArrowPreference(
-                            title = "音量键校验",
-                            summary = if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
-                                "已识别按键设备 · 点此重新校验"
-                            else "未识别 · 救砖时音量键可能没反应",
-                            onClick = onOpenVolumeCheck,
-                        )
-                        HorizontalDivider(
-                            color = MiuixTheme.colorScheme.dividerLine,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        ArrowPreference(
-                            title = "崩溃日志",
-                            summary = if (CrashLog.lastCrashFile() != null)
-                                "有崩溃记录 · 点此查看堆栈"
-                            else "无崩溃记录",
-                            onClick = onOpenCrashLog,
-                        )
                     }
                 }
 
@@ -255,7 +296,7 @@ fun HomePage(
                             InfoRow(
                                 "音量键",
                                 if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
-                                    "已识别（+ ${state.keyUp.ifBlank { "—" }}）"
+                                    "已识别"
                                 else "未识别（仅日志模式）",
                             )
                         }

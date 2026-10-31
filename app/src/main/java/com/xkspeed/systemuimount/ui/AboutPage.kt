@@ -4,8 +4,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -30,11 +34,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.core.graphics.drawable.toBitmap
 import com.xkspeed.systemuimount.BuildConfig
 import com.xkspeed.systemuimount.core.ModuleState
+import com.xkspeed.systemuimount.core.Update
+import com.xkspeed.systemuimount.core.UpdateInfo
 import com.xkspeed.systemuimount.ui.component.effect.BgEffectBackground
 import com.xkspeed.systemuimount.ui.component.glass.ScrollPage
 import com.xkspeed.systemuimount.ui.util.isInDarkTheme
 import com.xkspeed.systemuimount.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
@@ -49,21 +57,23 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 /**
- * 关于页（底栏第三个 tab，一级页）。
+ * 关于页（设置页最下面的入口 点进来的二级页）
  *
  * 整体从 apkeditor(miuix) 的 AboutPage 直接移植：
- * - 背景 [BgEffectBackground]（原版 AGSL 流光），并把自己录进 [rememberBlurBackdrop]
- *   返回的采样层，磨砂卡片 / 应用名都从这里取色；
- * - Logo 区浮动思路一致：图标 + 应用名（流光染色）+ 版本号，随滚动分层淡出缩小；
- * - 内容为两张磨砂卡（textureBlur 采样背景流光），不分组标题。
+ * - 背景 [BgEffectBackground]（原版 AGSL 流光） 并把自己录进 [rememberBlurBackdrop]
+ *   返回的采样层 磨砂卡片 / 应用名都从这里取色；
+ * - Logo 区浮动思路一致：图标 + 应用名（流光染色）+ 版本号 随滚动分层淡出缩小；
+ * - 内容为两张磨砂卡（textureBlur 采样背景流光） 不分组标题
  *
- * 这是一级页（底栏 tab），**不画左上角返回键**；依赖清单放在二级界面 [onOpenThirdPartyLicenses]。
+ * 二级页：左上角有返回键；依赖清单再往下走一层 [onOpenThirdPartyLicenses]
  */
 @Composable
 fun AboutPage(
-    padding: PaddingValues,
     state: ModuleState,
+    latest: UpdateInfo?,
+    onOpenRelease: () -> Unit,
     onOpenThirdPartyLicenses: () -> Unit,
+    onBack: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     val uriHandler = LocalUriHandler.current
@@ -82,9 +92,11 @@ fun AboutPage(
 
     ScrollPage(
         title = "关于",
-        // 底栏 tab：底部要含底栏高度（外层 padding），再加呼吸
-        bottomPadding = padding.calculateBottomPadding() + 16.dp,
-        // 背景流光：apkeditor 原版 BgEffectBackground，并录进 backdrop 供卡片/标题采样
+        onBack = onBack,
+        // 二级页：只让开导航栏
+        bottomPadding = WindowInsets.navigationBars.asPaddingValues()
+            .calculateBottomPadding() + 24.dp,
+        // 背景流光：apkeditor 原版 BgEffectBackground 并录进 backdrop 供卡片/标题采样
         backgroundContent = {
             BgEffectBackground(
                 dynamicBackground = true,
@@ -92,7 +104,7 @@ fun AboutPage(
                 bgModifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
                 alpha = { 1f - scrollProgress },
             ) {
-                // 纯背景层，无内容
+                // 纯背景层 无内容
             }
         },
     ) {
@@ -127,6 +139,49 @@ fun AboutPage(
             }
         }
 
+        // ---- 有更新时的变更说明 ----
+        if (latest != null) {
+            item {
+                FrostedCard(backdrop = backdrop) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        MiuixText(
+                            "v${Update.label(latest)} 更新内容",
+                            color = colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        val notes = Update.changelogLines(latest)
+                        if (notes.isEmpty()) {
+                            MiuixText(
+                                "作者没有写变更说明",
+                                color = colorScheme.onSurfaceVariantSummary,
+                                fontSize = 13.sp,
+                            )
+                        } else {
+                            notes.forEach { line ->
+                                MiuixText(
+                                    "· $line",
+                                    color = colorScheme.onSurfaceVariantSummary,
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp,
+                                    modifier = Modifier.padding(bottom = 3.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = onOpenRelease,
+                            colors = ButtonDefaults.buttonColorsPrimary(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            MiuixText("前往下载")
+                        }
+                    }
+                }
+            }
+        }
+
         // ---- 卡片 2：链接与许可证（对齐 apkeditor 的「GPL / 第三方许可证」卡）----
         item {
             FrostedCard(backdrop = backdrop) {
@@ -157,10 +212,10 @@ fun AboutPage(
 }
 
 /**
- * Logo 区：图标 + 应用名 + 版本号。
+ * Logo 区：图标 + 应用名 + 版本号
  *
- * 应用名用 [textureBlur]（contentBlendMode = DstIn）从背景采样流光染色，
- * 就是 apkeditor 里 "ApkEditor·Miuix" 那种随背景流动的彩色字。
+ * 应用名用 [textureBlur]（contentBlendMode = DstIn）从背景采样流光染色
+ * 就是 apkeditor 里"ApkEditor·Miuix" 那种随背景流动的彩色字
  */
 @Composable
 private fun AboutLogo(
@@ -168,7 +223,7 @@ private fun AboutLogo(
     backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop?,
 ) {
     val isInDark = isInDarkTheme()
-    // 应用名的流光染色配色，照抄 apkeditor 的 logoBlend
+    // 应用名的流光染色配色 照抄 apkeditor 的 logoBlend
     val logoBlend = remember(isInDark) {
         if (isInDark) {
             listOf(
@@ -187,7 +242,7 @@ private fun AboutLogo(
 
     val density = LocalDensity.current
     val ctx = LocalContext.current
-    // 直接读取应用启动图标，保证与桌面图标始终一致
+    // 直接读取应用启动图标 保证与桌面图标始终一致
     val appIcon = remember(ctx, density) {
         val iconSizePx = with(density) { 100.dp.roundToPx() }
         ctx.packageManager.getApplicationIcon(ctx.applicationInfo)
@@ -266,9 +321,9 @@ private fun AboutLogo(
 }
 
 /**
- * 磨砂玻璃卡片：容器填充透明 + [textureBlur] 采样背后流光，参数与 apkeditor
- * 的卡片完全一致（16dp 圆角 / 60f 模糊 / ColorBlendToken 混色）。
- * 不支持 runtime shader 时退回实心底色，避免卡片变透明看不见字。
+ * 磨砂玻璃卡片：容器填充透明 + [textureBlur] 采样背后流光 参数与 apkeditor
+ * 的卡片完全一致（16dp 圆角 / 60f 模糊 / ColorBlendToken 混色）
+ * 不支持 runtime shader 时退回实心底色 避免卡片变透明看不见字
  */
 @Composable
 private fun FrostedCard(

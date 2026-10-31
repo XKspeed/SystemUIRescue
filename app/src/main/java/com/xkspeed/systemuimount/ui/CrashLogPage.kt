@@ -33,10 +33,10 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 崩溃日志页。
+ * 崩溃日志页
  *
- * 崩溃现场由 [CrashLog] 落在应用私有目录，这里把它显示出来，
- * 用户可以直接复制内容反馈 —— 不用 root、不用连 adb。
+ * 崩溃现场由 [CrashLog] 落在应用私有目录 这里把它显示出来
+ * 用户可以直接复制内容反馈 —— 不用 root、不用连 adb
  */
 @Composable
 fun CrashLogPage(onBack: () -> Unit) {

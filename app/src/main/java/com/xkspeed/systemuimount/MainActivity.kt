@@ -30,7 +30,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 前台服务通知需要权限（Android 13+）；不给也能跑，只是通知看不到
+        // 前台服务通知需要权限（Android 13+）；不给也能跑 只是通知看不到
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // 先恢复设置，再进 setContent，否则重启永远回到"跟随系统"
+        // 先恢复设置 再进 setContent 否则重启永远回到"跟随系统"
         ThemeState.load(this)
         UiConfigState.load(this)
 

@@ -5,11 +5,11 @@ import com.xkspeed.systemuimount.core.CrashLog
 import com.xkspeed.systemuimount.core.Root
 
 /**
- * libsu 的默认 builder 必须在任何 Shell.cmd 之前设置，
- * 放在 Application.onCreate 是最早且唯一的时机。
+ * libsu 的默认 builder 必须在任何 Shell.cmd 之前设置
+ * 放在 Application.onCreate 是最早且唯一的时机
  *
- * 崩溃日志也在这里装：装得越早，启动早期的崩溃（ThemeState.load、
- * Root.init、Compose 首次组合）才抓得到。
+ * 崩溃日志也在这里装：装得越早 启动早期的崩溃（ThemeState.load、
+ * Root.init、Compose 首次组合）才抓得到
  */
 class MountApplication : Application() {
     override fun onCreate() {

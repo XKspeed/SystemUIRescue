@@ -1,11 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 前台服务：守护期间必须让进程留在 top-app cgroup，
-         否则切后台后 su 子进程会跟着被冻结，救砖逻辑就断了 -->
+    <!-- 前台服务：守护期间必须让进程留在 top-app cgroup
+         否则切后台后 su 子进程会跟着被冻结 救砖逻辑就断了 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- 检查更新要读 GitHub 上的 update.json -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Android 11 起包可见性受限 不声明的话查不到 MT 的安装信息 -->
+    <queries>
+        <!-- MT 管理器与官方共存版 选文件时按包名直接点名 -->
+        <package android:name="bin.mt.plus" />
+        <package android:name="bin.mt.plus.canary" />
+
+        <!-- 按包名探测启动 Activity 要用 GET_CONTENT 去查
+             不在这里声明可见性 queryIntentActivities 只会返回自己看得见的包
+             结果就是找不到来源 只能干瞪眼 -->
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <category android:name="android.intent.category.OPENABLE" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
 
     <application
         android:name=".MountApplication"
@@ -33,7 +57,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="维持 root 救砖守护进程，防止系统冻结" />
+                android:value="维持 root 救砖守护进程 防止系统冻结" />
         </service>
     </application>
 </manifest>

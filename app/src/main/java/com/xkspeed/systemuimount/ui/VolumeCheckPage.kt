@@ -54,16 +54,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 private sealed interface StepState {
     data object Idle : StepState
     data object Waiting : StepState
-    data class Passed(val device: String) : StepState
+    data object Passed : StepState
     data object Failed : StepState
 }
 
 /**
- * 音量键校验。
+ * 音量键校验
  *
  * 对应 check.sh 的 up / down / save：
- * 每步都会阻塞到用户按键或 10 秒超时，所以放在 IO 线程跑，
- * 界面先显示"请按音量+"再等结果。
+ * 每步都会阻塞到用户按键或 10 秒超时 所以放在 IO 线程跑
+ * 界面先显示"请按音量+"再等结果
  */
 @Composable
 fun VolumeCheckPage(
@@ -77,7 +77,7 @@ fun VolumeCheckPage(
     var running by remember { mutableStateOf(false) }
     var upState by remember { mutableStateOf<StepState>(StepState.Idle) }
     var downState by remember { mutableStateOf<StepState>(StepState.Idle) }
-    var hint by remember { mutableStateOf("按顺序按一次音量 + 和音量 −，用来确认按键事件能读到") }
+    var hint by remember { mutableStateOf("按顺序按一次音量 + 和音量 − 用来确认按键事件能读到") }
     var saved by remember { mutableStateOf(false) }
 
     val backdrop = rememberBlurBackdrop()
@@ -93,21 +93,21 @@ fun VolumeCheckPage(
             upState = StepState.Waiting
             val up = Module.check("up").trim()
             val upOk = up.startsWith("OK")
-            upState = if (upOk) StepState.Passed(up.removePrefix("OK").trim()) else StepState.Failed
+            upState = if (upOk) StepState.Passed else StepState.Failed
 
             hint = "请按一次【音量 −】"
             downState = StepState.Waiting
             val down = Module.check("down").trim()
             val downOk = down.startsWith("OK")
-            downState = if (downOk) StepState.Passed(down.removePrefix("OK").trim()) else StepState.Failed
+            downState = if (downOk) StepState.Passed else StepState.Failed
 
             if (upOk && downOk) {
                 Module.check("save")
                 saved = true
-                hint = "校验通过，已写入配置"
+                hint = "校验通过 已写入配置"
                 onFinished()
             } else {
-                hint = "有按键没读到，重试一次；实在不行检查音量键是否被其他模块占用"
+                hint = "有按键没读到 重试一次；实在不行检查音量键是否被其他模块占用"
             }
             running = false
         }
@@ -148,7 +148,7 @@ fun VolumeCheckPage(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "校验只是确认能读到按键事件，不改动系统设置。失败也可以继续用，只是救砖时按音量键可能没反应。",
+                            "校验只是确认能读到按键事件 不改动系统设置 失败也可以继续用 只是救砖时按音量键可能没反应",
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             style = MiuixTheme.textStyles.subtitle,
                         )
@@ -180,7 +180,7 @@ private fun StepRow(label: String, state: StepState) {
             )
             Text(
                 when (state) {
-                    is StepState.Passed -> "已识别 ${state.device}"
+                    is StepState.Passed -> "已识别"
                     is StepState.Failed -> "未检测到按键"
                     StepState.Waiting -> "等待按键…"
                     StepState.Idle -> "未校验"

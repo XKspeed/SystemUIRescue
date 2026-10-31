@@ -32,7 +32,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
-/** 宽屏（平板 / 折叠展开）标记，由 App 根部提供 */
+/** 宽屏（平板 / 折叠展开）标记 由 App 根部提供 */
 val LocalIsWideScreen: ProvidableCompositionLocal<Boolean> = staticCompositionLocalOf { false }
 
 private object TopBarBlurConfig {
@@ -42,10 +42,10 @@ private object TopBarBlurConfig {
 }
 
 /**
- * 模糊背景板。
+ * 模糊背景板
  *
  * 必须在内容外层套 [androidx.compose.ui.draw.drawWithContent] 的 backdrop 里
- * 才能拿到"顶栏下面那层"的像素；这里只是创建，真正的采样靠调用方的 layerBackdrop。
+ * 才能拿到"顶栏下面那层"的像素；这里只是创建 真正的采样靠调用方的 layerBackdrop
  */
 @Composable
 fun rememberBlurBackdrop(): LayerBackdrop? {
@@ -60,10 +60,10 @@ fun rememberBlurBackdrop(): LayerBackdrop? {
 }
 
 /**
- * 顶栏容器：滚动到顶时不透明，滚下去以后透出下方内容的模糊。
- * 不传 backdrop 或设备不支持 runtime shader 时退化成普通 Box，不影响布局。
+ * 顶栏容器：滚动到顶时不透明 滚下去以后透出下方内容的模糊
+ * 不传 backdrop 或设备不支持 runtime shader 时退化成普通 Box 不影响布局
  *
- * [alpha] 让模糊层随滚动渐入，而不是"滚过 1px 突然出现一整条底"。
+ * [alpha] 让模糊层随滚动渐入 而不是"滚过 1px 突然出现一整条底"
  */
 @Composable
 fun BlurredBar(
@@ -115,9 +115,9 @@ fun Modifier.pageScrollModifiers(
     )
 
 /**
- * 页面内容留白 = 自身 Scaffold 的 insets + 外层（底栏）的 padding。
+ * 页面内容留白 = 自身 Scaffold 的 insets + 外层（底栏）的 padding
  *
- * 之前漏掉 outerPadding 的 bottom，列表最后一项会被底栏压住 —— 就是这个函数的意义。
+ * 之前漏掉 outerPadding 的 bottom 列表最后一项会被底栏压住 —— 就是这个函数的意义
  */
 @Composable
 fun pageContentPadding(
@@ -160,7 +160,7 @@ fun shouldShowSplitPane(): Boolean {
     }
 }
 
-/** 当前是不是深色主题：用 surface 亮度判断，比读系统配置可靠 */
+/** 当前是不是深色主题：用 surface 亮度判断 比读系统配置可靠 */
 @Composable
 @ReadOnlyComposable
 fun isInDarkTheme(): Boolean {

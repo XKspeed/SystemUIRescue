@@ -12,13 +12,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 
 /**
- * 用 Drawable 画的 Painter，专门用来显示 launcher 图标。
+ * 用 Drawable 画的 Painter 专门用来显示 launcher 图标
  *
- * 不能用 `painterResource()`：自适应图标是 XML（adaptive-icon），
- * 它既不是 VectorDrawable 也不是位图，Compose 加载会抛
- * `IllegalArgumentException: Unable to load image`，页面一进就闪退。
+ * 不能用 `painterResource()`：自适应图标是 XML（adaptive-icon）
+ * 它既不是 VectorDrawable 也不是位图 Compose 加载会抛
+ * `IllegalArgumentException: Unable to load image` 页面一进就闪退
  *
- * 这里直接拿系统解析好的 Drawable 自己画，自适应图标 / 位图 / 矢量都通吃。
+ * 这里直接拿系统解析好的 Drawable 自己画 自适应图标 / 位图 / 矢量都通吃
  */
 @Composable
 fun rememberDrawablePainter(@DrawableRes id: Int): Painter? {

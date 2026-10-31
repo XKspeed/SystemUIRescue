@@ -32,19 +32,19 @@ import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 
 /**
- * 大面积玻璃表面的自适应内容色（AdaptiveLuminanceGlass demo 同款黑↔白翻转）。
- * null = 所在表面未启用自适应，消费方必须回退主题色，不允许把 null 当白色用。
+ * 大面积玻璃表面的自适应内容色（AdaptiveLuminanceGlass demo 同款黑↔白翻转）
+ * null = 所在表面未启用自适应 消费方必须回退主题色 不允许把 null 当白色用
  */
 val LocalGlassContentColor = staticCompositionLocalOf<Color?> { null }
 
 /**
- * demo 同款映射：平均亮度 0..1 → [-1,1] 保号平方（平方让中段更迟钝、两端更陡）。
- * l>0 = 玻璃背后偏亮，l<0 = 偏暗。
+ * demo 同款映射：平均亮度 0..1 → [-1,1] 保号平方（平方让中段更迟钝、两端更陡）
+ * l>0 = 玻璃背后偏亮 l<0 = 偏暗
  *
- * 亮侧封顶 [BrightLuminanceCap]：demo 的 backdrop 是彩色壁纸，永远不会接近纯白；
- * 我们的浅色主题页面大面积是白底，采样 1.0 时 l=+1 会把玻璃压成
- * contrast=0 + brightness=0.5 的纯白平片（用户看到的就是它）。封顶后白背景
- * 仍保留 40% 对比与可见的模糊/折射调制，暗侧与其余区间数值与 demo 完全一致。
+ * 亮侧封顶 [BrightLuminanceCap]：demo 的 backdrop 是彩色壁纸 永远不会接近纯白；
+ * 我们的浅色主题页面大面积是白底 采样 1.0 时 l=+1 会把玻璃压成
+ * contrast=0 + brightness=0.5 的纯白平片（用户看到的就是它） 封顶后白背景
+ * 仍保留 40% 对比与可见的模糊/折射调制 暗侧与其余区间数值与 demo 完全一致
  */
 internal const val BrightLuminanceCap = 0.6f
 
@@ -53,31 +53,31 @@ internal fun backdropSignedLuminance(luminance: Float): Float {
     return (signed * abs(signed)).coerceIn(-1f, BrightLuminanceCap)
 }
 
-/** 亮背景提亮更多、暗背景也稍提亮（demo 同款数值映射）。 */
+/** 亮背景提亮更多、暗背景也稍提亮（demo 同款数值映射）  */
 internal fun adaptiveBrightness(l: Float): Float = if (l > 0f) 0.1f + 0.4f * l else 0.1f + 0.3f * l
 
-/** 背景越亮对比度越低（白纱感），暗背景保持原对比。 */
+/** 背景越亮对比度越低（白纱感） 暗背景保持原对比  */
 internal fun adaptiveContrast(l: Float): Float = if (l > 0f) 1f - l else 1f
 
 /**
- * 模糊半径调制：亮背景磨砂更强（×2 封顶），暗背景更通透（×0.25 下限）。
- * 即 LiquidTopBarButton 8+8l / 8+6l 的比值形式，任意组件基底半径通用。
+ * 模糊半径调制：亮背景磨砂更强（×2 封顶） 暗背景更通透（×0.25 下限）
+ * 即 LiquidTopBarButton 8+8l / 8+6l 的比值形式 任意组件基底半径通用
  */
 fun adaptiveBlurPx(basePx: Float, l: Float): Float =
     if (l > 0f) basePx * (1f + l) else basePx * (1f + 0.75f * l)
 
 /**
- * 表面纱不透明度：亮背景维持磨砂面（0.5），暗背景趋向透明（0.10）。
+ * 表面纱不透明度：亮背景维持磨砂面（0.5） 暗背景趋向透明（0.10）
  * demo 的玻璃没有 surface 色层；固定 50% 白纱盖在调暗的 backdrop 上
- * 就是深色页面"发白"的来源。luminance 传原始 0..1 采样亮度。
+ * 就是深色页面"发白"的来源 luminance 传原始 0..1 采样亮度
  */
 internal fun adaptiveSurfaceVeilAlpha(luminance: Float): Float =
     0.10f + 0.40f * luminance.coerceIn(0f, 1f)
 
 /**
  * 自适应 vibrancy：与固定 [com.kyant.backdrop.effects.vibrancy] 同为一个
- * ColorMatrixColorFilter（saturation 1.5），只多出 brightness/contrast 两个矩阵常数，
- * 成本不变。l 由 [AdaptiveBackdropLuminance.l] 绘制期直读。
+ * ColorMatrixColorFilter（saturation 1.5） 只多出 brightness/contrast 两个矩阵常数
+ * 成本不变 l 由 [AdaptiveBackdropLuminance.l] 绘制期直读
  */
 fun BackdropEffectScope.adaptiveGlassColorControls(l: Float) {
     colorControls(
@@ -88,16 +88,16 @@ fun BackdropEffectScope.adaptiveGlassColorControls(l: Float) {
 }
 
 /**
- * 共享的自适应亮度设施：把玻璃窗口内的 backdrop 内容录进 [GraphicsLayer]，
+ * 共享的自适应亮度设施：把玻璃窗口内的 backdrop 内容录进 [GraphicsLayer]
  * 5×5 采样 Rec.709 平均亮度（首版移植自 AndroidLiquidGlass AdaptiveLuminanceGlass
- * demo，见 LiquidTopBarButton），平滑后驱动 colorControls/blur 与内容色。
+ * demo 见 LiquidTopBarButton） 平滑后驱动 colorControls/blur 与内容色
  *
- * 线程与节流：RESUMED 期 250ms 一拍，record 版本号去重——backdrop 不重绘就不采样，
- * 所以静止画面零成本、动画期（调用方停画 backdrop 时）也零成本。
+ * 线程与节流：RESUMED 期 250ms 一拍 record 版本号去重——backdrop 不重绘就不采样
+ * 所以静止画面零成本、动画期（调用方停画 backdrop 时）也零成本
  *
- * onDrawBackdrop 必须是类属性单实例：库内 DrawBackdropElement.equals 逐项比较回调，
+ * onDrawBackdrop 必须是类属性单实例：库内 DrawBackdropElement.equals 逐项比较回调
  * 内联新建的 lambda 每次重组都判"参数变了"→ invalidateDrawCache 风暴（LiquidBottomTabs
- * NavContainerOnDrawBackdrop 同款教训）。
+ * NavContainerOnDrawBackdrop 同款教训）
  */
 @Stable
 class AdaptiveBackdropLuminance internal constructor(
@@ -135,27 +135,27 @@ class AdaptiveBackdropLuminance internal constructor(
         }
     }
 
-    /** 原始平滑亮度（0..1），供需要亮度本身的调用方（如表面色插值）使用。 */
+    /** 原始平滑亮度（0..1） 供需要亮度本身的调用方（如表面色插值）使用  */
     fun luminance(): Float = luminanceState()
 
-    /** demo 同款保号平方映射，effects 内直读，变化只触发重绘不触发重组。 */
+    /** demo 同款保号平方映射 effects 内直读 变化只触发重绘不触发重组  */
     fun l(): Float = backdropSignedLuminance(luminanceState())
 
-    /** 自适应内容色：亮背景黑字、暗背景白字，tween(1000) 平滑。 */
+    /** 自适应内容色：亮背景黑字、暗背景白字 tween(1000) 平滑  */
     fun contentColor(): Color = contentColorState()
 
     /**
-     * 稳定单实例 onDrawBackdrop：照常画 backdrop 内容，另录一份纯 backdrop 进采样层。
-     * 录制内容只有 backdrop 本身——表面色、高光、内容组件一律不进 layer，
+     * 稳定单实例 onDrawBackdrop：照常画 backdrop 内容 另录一份纯 backdrop 进采样层
+     * 录制内容只有 backdrop 本身——表面色、高光、内容组件一律不进 layer
      * 这是 layerBackdrop 录制层内禁放 drawBackdrop 消费者（RenderThread 递归崩溃）的
-     * 安全前提。
+     * 安全前提
      */
     val onDrawBackdrop: DrawScope.(drawBackdrop: DrawScope.() -> Unit) -> Unit = { drawBackdrop ->
         drawBackdrop()
         recordBackdrop(drawBackdrop)
     }
 
-    /** 已有自定义 onDrawBackdrop 的调用方（如 PlayerShell 的运动期门禁）在原门禁内补录。 */
+    /** 已有自定义 onDrawBackdrop 的调用方（如 PlayerShell 的运动期门禁）在原门禁内补录  */
     fun DrawScope.recordBackdrop(drawBackdrop: DrawScope.() -> Unit) {
         layer.record { drawBackdrop() }
         recordVersion[0]++
@@ -218,7 +218,7 @@ class AdaptiveBackdropLuminance internal constructor(
                         } else if (emptyVersion == version) {
                             sampledVersion = version
                         } else {
-                            // 首帧录制可能还没就绪：即使没有新绘制也再试一次。
+                            // 首帧录制可能还没就绪：即使没有新绘制也再试一次
                             emptyVersion = version
                         }
                     } catch (e: Exception) {
@@ -257,7 +257,7 @@ class AdaptiveBackdropLuminance internal constructor(
                         warningLogged[0] = true
                         Log.w(tag, "Adaptive backdrop sampling failed", e)
                     }
-                    // 先等新绘制，再按记录退避，避免持续失败引发采样风暴。
+                    // 先等新绘制 再按记录退避 避免持续失败引发采样风暴
                     consecutiveFailures = (consecutiveFailures + 1).coerceAtMost(5)
                     if (consecutiveFailures >= 2) sampledVersion = version
                     delay((1000L shl consecutiveFailures).coerceAtMost(30_000L))
@@ -274,10 +274,10 @@ class AdaptiveBackdropLuminance internal constructor(
 }
 
 /**
- * 取共享自适应亮度设施。enabled=false 或 API<31（GraphicsLayer.toImageBitmap 门禁，
- * 与 LiquidTopBarButton 现行门禁一致）返回 null，调用方保持现有静态材质分支。
+ * 取共享自适应亮度设施 enabled=false 或 API<31（GraphicsLayer.toImageBitmap 门禁
+ * 与 LiquidTopBarButton 现行门禁一致）返回 null 调用方保持现有静态材质分支
  *
- * [initialLuminance] 用主题底色先验（浅色 1f / 深色 0f），避免首帧从中间值闪变。
+ * [initialLuminance] 用主题底色先验（浅色 1f / 深色 0f） 避免首帧从中间值闪变
  */
 @Composable
 fun rememberAdaptiveBackdropLuminance(

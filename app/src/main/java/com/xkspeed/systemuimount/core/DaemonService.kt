@@ -16,13 +16,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * 前台服务：守护运行期间把进程留在前台，避免被系统冻结。
+ * 前台服务：守护运行期间把进程留在前台 避免被系统冻结
  *
  * 这是这个 App 存在的核心理由 —— WebUI 里 ksu.exec 派生的 action.sh
- * 会跟着管理器进程一起进 cached/frozen cgroup，切后台就停摆；
- * App 挂着前台服务时进程是 top-app，su 子进程也不会被冻。
+ * 会跟着管理器进程一起进 cached/frozen cgroup 切后台就停摆；
+ * App 挂着前台服务时进程是 top-app su 子进程也不会被冻
  *
- * 本服务不承载业务逻辑，只负责"让进程活着 + 给用户一个可见的入口"。
+ * 本服务不承载业务逻辑 只负责"让进程活着 + 给用户一个可见的入口"
  */
 class DaemonService : Service() {
 
@@ -40,7 +40,7 @@ class DaemonService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        // 守护已经结束就自己退，别留一个空通知
+        // 守护已经结束就自己退 别留一个空通知
         scope.launch {
             val running = runCatching { Module.readState().daemonRunning }.getOrDefault(false)
             if (!running) stopSelf()
@@ -78,7 +78,7 @@ class DaemonService : Service() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("救砖守护运行中")
-            .setContentText("切走或锁屏不会中断，回到应用可查看日志")
+            .setContentText("切走或锁屏不会中断 回到应用可查看日志")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
             .setContentIntent(open)

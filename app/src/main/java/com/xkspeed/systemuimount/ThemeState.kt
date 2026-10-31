@@ -6,8 +6,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * 全局主题状态（对齐示例 App 的参数体系）。
- * 0 = 跟随系统，1 = 浅色，2 = 深色，3 = 莫奈跟随系统，4 = 莫奈浅色，5 = 莫奈深色。
+ * 全局主题状态（对齐示例 App 的参数体系）
+ * 0 = 跟随系统 1 = 浅色 2 = 深色 3 = 莫奈跟随系统 4 = 莫奈浅色 5 = 莫奈深色
  */
 object ThemeState {
     var mode by mutableIntStateOf(MODE_SYSTEM)
@@ -28,7 +28,7 @@ object ThemeState {
     private const val KEY_PALETTE = "palette_style"
     private const val KEY_SPEC = "color_spec"
 
-    /** MainActivity.onCreate 里、setContent 之前调用，恢复上次的选择 */
+    /** MainActivity.onCreate 里、setContent 之前调用 恢复上次的选择 */
     fun load(context: Context) {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         mode = p.getInt(KEY_MODE, MODE_SYSTEM)

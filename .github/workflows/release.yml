@@ -1,12 +1,12 @@
 name: Release
 
 on:
-  # 只手动触发：一键发布 —— Actions 页面点 Run workflow。
-  # 不挂 push / tag 触发，避免每次提交都发一个 Release。
+  # 只手动触发：一键发布 —— Actions 页面点 Run workflow
+  # 不挂 push / tag 触发 避免每次提交都发一个 Release
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（如 1.0.1，可带 v）；留空沿用 build.gradle.kts 现有版本，不改动'
+        description: '版本号（如 1.0.1 可带 v）；留空沿用 build.gradle.kts 现有版本 不改动'
         required: false
         default: ''
 
@@ -32,21 +32,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 把 Secrets 里的 keystore（jks 的 base64 单行文本）解码回文件。
-      # 解码后立刻按别名校验：内容不对时在这一步就报明确错误，
-      # 而不是等到 packageRelease 才抛难懂的 "Tag number over 30 is not supported"
+      # 把 Secrets 里的 keystore（jks 的 base64 单行文本）解码回文件
+      # 解码后立刻按别名校验：内容不对时在这一步就报明确错误
+      # 而不是等到 packageRelease 才抛难懂的"Tag number over 30 is not supported"
       - name: Decode signing key
         env:
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
-          # 先落盘再解码：容忍复制时混入的换行/空格，也避免密钥内容被 shell 解释
+          # 先落盘再解码：容忍复制时混入的换行/空格 也避免密钥内容被 shell 解释
           cat > /tmp/signing-key.b64 <<'B64_EOF'
           ${{ secrets.SIGNING_KEY }}
           B64_EOF
           B64=$(tr -d '[:space:]' < /tmp/signing-key.b64)
-          # 下面只打印元信息（长度/字节数），绝不打印密钥内容本身
+          # 下面只打印元信息（长度/字节数） 绝不打印密钥内容本身
           echo "SIGNING_KEY 字符数（去空白后）: ${#B64}"
 
           # ① 变量是否配了
@@ -55,17 +55,17 @@ jobs:
             exit 1
           fi
           if [ -z "${KEY_STORE_PASSWORD}" ]; then
-            echo "::error::KEY_STORE_PASSWORD 为空 —— Secrets 里没配，应为 SysUI@Mount2026"
+            echo "::error::KEY_STORE_PASSWORD 为空 —— Secrets 里没配 应为 SysUI@Mount2026"
             exit 1
           fi
           if [ -z "${KEY_ALIAS}" ]; then
-            echo "::error::KEY_ALIAS 为空 —— Secrets 里没配，应为 systemuimount"
+            echo "::error::KEY_ALIAS 为空 —— Secrets 里没配 应为 systemuimount"
             exit 1
           fi
 
           # ② 内容是否像 base64（粘了 jks 二进制会在这里露馅）
           if printf '%s' "$B64" | grep -q '[^A-Za-z0-9+/=]'; then
-            echo "::error::SIGNING_KEY 含有非 base64 字符 —— 多半把 jks 二进制内容粘进去了，必须是「jks 文件的 base64 文本」"
+            echo "::error::SIGNING_KEY 含有非 base64 字符 —— 多半把 jks 二进制内容粘进去了 必须是「jks 文件的 base64 文本」"
             exit 1
           fi
 
@@ -77,46 +77,53 @@ jobs:
           # ④ 格式 + store 密码（这一步失败 = 产物损坏 或 storePassword 不对）
           if ! keytool -list -keystore app/release-key.jks -storetype pkcs12 \
               -storepass "$KEY_STORE_PASSWORD" >/dev/null 2>&1; then
-            echo "::error::keystore 打不开 —— 要么解码产物不完整（SIGNING_KEY 被截断），要么 KEY_STORE_PASSWORD 不对（应为 SysUI@Mount2026）"
+            echo "::error::keystore 打不开 —— 要么解码产物不完整（SIGNING_KEY 被截断） 要么 KEY_STORE_PASSWORD 不对（应为 SysUI@Mount2026）"
             exit 1
           fi
 
           # ⑤ 别名是否存在（能打开但别名不对 = KEY_ALIAS 填错）
           if ! keytool -list -keystore app/release-key.jks -storetype pkcs12 \
               -storepass "$KEY_STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
-            echo "::error::keystore 能打开，但找不到别名 $KEY_ALIAS —— KEY_ALIAS 应为 systemuimount"
+            echo "::error::keystore 能打开 但找不到别名 $KEY_ALIAS —— KEY_ALIAS 应为 systemuimount"
             exit 1
           fi
           echo "keystore 校验通过（alias=$KEY_ALIAS）"
 
       # 解析版本号：
-      #  · 填了 → 用它（下一步自动改 versionName 并递增 versionCode）
-      #  · 留空 → 沿用 build.gradle.kts 现有 versionName，不改任何文件
+      #  · 填了且与现有版本不同 → 用它（下一步自动改 versionName 并递增 versionCode）
+      #  · 填的和现有版本一样 → 不再递增 versionCode 直接复用（重发同一版不虚增版本号）
+      #  · 留空 → 沿用 build.gradle.kts 现有 versionName 不改任何文件
       - name: Resolve version
         id: version
         run: |
           set -euo pipefail
           INPUT="${{ github.event.inputs.version }}"
           INPUT="${INPUT#v}"
+          CURRENT=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
           if [ -z "$INPUT" ]; then
-            VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+            VERSION="$CURRENT"
             echo "bump=false" >> "$GITHUB_OUTPUT"
-            echo "未填版本号，沿用现有 versionName: ${VERSION}"
+            echo "未填版本号 沿用现有 versionName: ${VERSION}"
           else
             if ! printf '%s' "$INPUT" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
               echo "::error::版本号格式不对：${INPUT}（应为 1.0.1 这样的数字点分格式）"
               exit 1
             fi
             VERSION="$INPUT"
-            echo "bump=true" >> "$GITHUB_OUTPUT"
-            echo "将自动改为 versionName=${VERSION}，并递增 versionCode"
+            if [ "$INPUT" = "$CURRENT" ]; then
+              echo "bump=false" >> "$GITHUB_OUTPUT"
+              echo "输入版本与现有 versionName 一致（${CURRENT}） 不再递增 versionCode"
+            else
+              echo "bump=true" >> "$GITHUB_OUTPUT"
+              echo "将自动改为 versionName=${VERSION} 并递增 versionCode"
+            fi
           fi
           echo "version_name=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "目标版本: ${VERSION}（tag v${VERSION}）"
 
-      # 自动改版本号：versionName = 输入值，versionCode = 旧值 + 1
-      # versionCode 必须递增，否则新包装不上（覆盖安装会失败）
+      # 自动改版本号：versionName = 输入值 versionCode = 旧值 + 1
+      # versionCode 必须递增 否则新包装不上（覆盖安装会失败）
       - name: Bump version in build.gradle.kts
         if: steps.version.outputs.bump == 'true'
         env:
@@ -128,7 +135,7 @@ jobs:
           OLD_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' "$FILE" | head -1)
           NEW_CODE=$((OLD_CODE + 1))
           sed -i -E "s/versionCode\s*=\s*[0-9]+/versionCode = ${NEW_CODE}/" "$FILE"
-          echo "versionName -> ${VERSION}，versionCode ${OLD_CODE} -> ${NEW_CODE}"
+          echo "versionName -> ${VERSION} versionCode ${OLD_CODE} -> ${NEW_CODE}"
           grep -nE 'versionCode|versionName' "$FILE"
 
       # 密码通过环境变量传给 Gradle（build.gradle.kts 读取）
@@ -139,7 +146,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon
 
-      # 确认密钥真的用上了：没签名的包也能构建出来，只有验证过才算数
+      # 确认密钥真的用上了：没签名的包也能构建出来 只有验证过才算数
       - name: Verify APK signature
         run: |
           set -euo pipefail
@@ -158,7 +165,7 @@ jobs:
             echo "签名校验通过（存在 META-INF/*.RSA）"
           fi
 
-      # 构建成功后再提交版本号改动，避免构建失败留下一半的脏提交
+      # 构建成功后再提交版本号改动 避免构建失败留下一半的脏提交
       - name: Commit version bump
         if: steps.version.outputs.bump == 'true'
         env:
@@ -168,14 +175,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git diff --quiet app/build.gradle.kts; then
-            echo "build.gradle.kts 无变化（可能本来就是该版本），跳过提交"
+            echo "build.gradle.kts 无变化（可能本来就是该版本） 跳过提交"
             exit 0
           fi
           git add app/build.gradle.kts
           git commit -m "chore(release): 版本号 ${VERSION}"
           git push origin HEAD:main
 
-      # 幂等：同一版本一键重发时，先删掉旧 tag 再打新的
+      # 幂等：同一版本一键重发时 先删掉旧 tag 再打新的
       - name: Create / update tag
         run: |
           git config user.name "github-actions[bot]"
@@ -189,20 +196,20 @@ jobs:
           git push origin "${TAG}"
 
       # 本次 Release 说明取自 update.md 顶部最新一段：
-      # update.md 由我们维护 —— 新版本内容写在文件顶部，历史段落自然下移留档，
-      # 工作流只取顶部那一段，保证每个 Release 只描述自己这个版本。
+      # update.md 由我们维护 —— 新版本内容写在文件顶部 历史段落自然下移留档
+      # 工作流只取顶部那一段 保证每个 Release 只描述自己这个版本
       - name: Extract release notes
         env:
           VERSION: ${{ steps.version.outputs.version_name }}
         run: |
           set -euo pipefail
-          # 默认空说明：update.md 为空时（例如首个正式版不写更新日志），Release 说明就留空
+          # 默认空说明：update.md 为空时（例如首个正式版不写更新日志） Release 说明就留空
           : > release_notes.md
           if [ -s update.md ]; then
             # 顶部标题与目标版本不一致时提醒：多半是忘了在 update.md 写本次更新
             TOP=$(head -1 update.md)
             if [ "$TOP" != "## v${VERSION} 更新" ]; then
-              echo "::warning::update.md 顶部是「${TOP}」，与目标版本 v${VERSION} 不一致 —— Release 说明可能不是这个版本的"
+              echo "::warning::update.md 顶部是「${TOP}」 与目标版本 v${VERSION} 不一致 —— Release 说明可能不是这个版本的"
             fi
             awk '/^## /{c++} c==1' update.md > release_notes.md
           fi
@@ -210,10 +217,10 @@ jobs:
             echo "--- 本次 Release 说明 ---"
             cat release_notes.md
           else
-            echo "update.md 为空，本次 Release 不写更新说明"
+            echo "update.md 为空 本次 Release 不写更新说明"
           fi
 
-      # 构建完直接发布 Release，附带签名 APK
+      # 构建完直接发布 Release 附带签名 APK
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -223,6 +230,68 @@ jobs:
           files: app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 发布完把仓库根的 update.json 指到这次 Release
+      # App 启动检查更新读的就是 main 上这份清单：
+      # versionCode 取 build.gradle.kts（已经 bump 过） 地址直接拼本次 tag 的 APK 资产
+      # changelog 从刚生成的 release_notes.md 里去掉标题和列表符号
+      - name: Update update.json
+        env:
+          VERSION: ${{ steps.version.outputs.version_name }}
+          TAG: ${{ steps.version.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' app/build.gradle.kts | head -1)
+          URL="https://github.com/${REPO}/releases/download/${TAG}/app-release.apk"
+          export CODE URL
+          python3 - <<'PY'
+          import json, os, re
+
+          lines = []
+          if os.path.exists("release_notes.md"):
+              for raw in open("release_notes.md", encoding="utf-8"):
+                  s = raw.strip()
+                  if not s or s.startswith("#"):
+                      continue
+                  lines.append(re.sub(r"^[-*]\s+", "", s))
+
+          data = {
+              "versionCode": int(os.environ["CODE"]),
+              "versionName": os.environ["VERSION"],
+              "url": os.environ["URL"],
+              "changelog": "\n".join(lines),
+          }
+          with open("update.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          print(open("update.json", encoding="utf-8").read())
+          PY
+
+      # 清单改动提交回 main：推送被拒（别人刚好也推了）就 rebase 重试
+      - name: Commit update.json
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          if git diff --cached --quiet; then
+            echo "update.json 没有变化 跳过提交"
+            exit 0
+          fi
+          git commit -m "chore(release): update.json 指向 ${TAG}"
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "update.json 已推送到 main"
+              exit 0
+            fi
+            echo "推送被拒 第 ${i} 次重试…"
+            git pull --rebase --autostash origin main
+          done
+          echo "::error::update.json 推送失败"
+          exit 1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

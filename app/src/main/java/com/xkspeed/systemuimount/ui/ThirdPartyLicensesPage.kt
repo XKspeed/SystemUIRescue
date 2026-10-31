@@ -12,14 +12,14 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 
 /**
- * 第三方开源依赖清单（二级界面）。
+ * 第三方开源依赖清单（二级界面）
  *
- * 从关于页的「第三方许可证」进入。每个库一行，点击跳官网。
- * 清单内容对齐 apkeditormiuix 的致谢页写法（框架 → 工具），并补上本项目实际用到、
- * 但 apkeditor 没有的库：kyant 系列、libsu，以及**移植来源 Sonify（GPL-3.0）**。
+ * 从关于页的「第三方许可证」进入 每个库一行 点击跳官网
+ * 清单内容对齐 apkeditormiuix 的致谢页写法（框架 → 工具） 并补上本项目实际用到、
+ * 但 apkeditor 没有的库：kyant 系列、libsu 以及**移植来源 Sonify（GPL-3.0）**
  *
- * 说明：玻璃组件（顶栏/底栏液态玻璃）移植自 Sonify，Sonify 自身为 GPL-3.0 派生作品，
- * 故本应用整体以 GPL-3.0 发布（见仓库根目录 LICENSE）。
+ * 说明：玻璃组件（顶栏/底栏液态玻璃）移植自 Sonify Sonify 自身为 GPL-3.0 派生作品
+ * 故本应用整体以 GPL-3.0 发布（见仓库根目录 LICENSE）
  */
 private data class OssLibrary(
     val name: String,

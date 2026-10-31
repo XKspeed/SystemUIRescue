@@ -41,12 +41,12 @@ suspend fun PointerInputScope.inspectDragGestures(
 }
 
 /**
- * 独占式拖动：越过 touchSlop 后即消费指针，父级滚动容器不再收到未消费事件。
+ * 独占式拖动：越过 touchSlop 后即消费指针 父级滚动容器不再收到未消费事件
  *
- * 用于 Toggle 开关等"滑动只应作用于控件本身"的场景：在开关上按下再滑动时，
- * 父级 LazyColumn/LazyVerticalGrid 不再跟着滚页面。未越过 touchSlop 即抬起仍视为
- * 点按（走 [onEnd]，由调用方按"未拖动"处理）；被其它手势先消费时走 [onCancel]，
- * 调用方应回弹而不提交。
+ * 用于 Toggle 开关等"滑动只应作用于控件本身"的场景：在开关上按下再滑动时
+ * 父级 LazyColumn/LazyVerticalGrid 不再跟着滚页面 未越过 touchSlop 即抬起仍视为
+ * 点按（走 [onEnd] 由调用方按"未拖动"处理）；被其它手势先消费时走 [onCancel]
+ * 调用方应回弹而不提交
  */
 suspend fun PointerInputScope.claimDragGestures(
     onStart: (down: PointerInputChange) -> Unit,
@@ -81,8 +81,8 @@ suspend fun PointerInputScope.claimDragGestures(
             val delta = change.positionChange()
             total += delta
             if (!claimed) {
-                // touchSlop 前不认领也不上报：既是点按判定窗口，也避免拇指在滑动手势
-                // 起点微抖；越过即独占，方向不论（纵向滑动同样不该滚页面）。
+                // touchSlop 前不认领也不上报：既是点按判定窗口 也避免拇指在滑动手势
+                // 起点微抖；越过即独占 方向不论（纵向滑动同样不该滚页面）
                 if (total.getDistance() <= viewConfiguration.touchSlop) continue
                 claimed = true
             }
@@ -94,11 +94,11 @@ suspend fun PointerInputScope.claimDragGestures(
 }
 
 /**
- * 水平独占拖动：只有**横向位移越过 touchSlop 且占优**时才认领并消费指针。
+ * 水平独占拖动：只有**横向位移越过 touchSlop 且占优**时才认领并消费指针
  *
- * 用于滚动容器里的横向滑条：纵向为主的滑动不认领、原样留给父级 LazyColumn，
- * 避免"拖滑条顺带把页面滚了"；横向一旦认领就独占，页面不会再跟着滚。
- * 未越过 touchSlop 即抬起视为点按（走 [onEnd]，调用方按"未拖动"处理）。
+ * 用于滚动容器里的横向滑条：纵向为主的滑动不认领、原样留给父级 LazyColumn
+ * 避免"拖滑条顺带把页面滚了"；横向一旦认领就独占 页面不会再跟着滚
+ * 未越过 touchSlop 即抬起视为点按（走 [onEnd] 调用方按"未拖动"处理）
  */
 suspend fun PointerInputScope.claimHorizontalDragGestures(
     onStart: (down: PointerInputChange) -> Unit,
@@ -134,8 +134,8 @@ suspend fun PointerInputScope.claimHorizontalDragGestures(
             total += delta
             if (!claimed) {
                 if (total.getDistance() <= viewConfiguration.touchSlop) continue
-                // 纵向占优：这是滚页面，不是拖条。不认领、直接退出，
-                // 事件留给父级滚动容器（此时我们还没消费过任何事件）。
+                // 纵向占优：这是滚页面 不是拖条 不认领、直接退出
+                // 事件留给父级滚动容器（此时我们还没消费过任何事件）
                 if (abs(total.x) <= abs(total.y)) {
                     cancelled = true
                     break

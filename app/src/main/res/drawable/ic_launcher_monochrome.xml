@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 13+ 主题图标：只取 alpha，图形上成白色（270° 白环 + 缺口处白点）。 -->
+<!-- Android 13+ 主题图标：只取 alpha 图形上成白色（270° 白环 + 缺口处白点）  -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"

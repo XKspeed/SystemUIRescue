@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
 class InteractiveHighlight(
     private val animationScope: CoroutineScope,
     private val position: (Size, Offset) -> Offset = { _, offset -> offset },
-    // 手势层叠在被选中 Tab 上方，普通点击不会穿透到底下的 Tab 按钮；
+    // 手势层叠在被选中 Tab 上方 普通点击不会穿透到底下的 Tab 按钮；
     // "按下后未拖动即抬起"视为点按当前选中 Tab（iOS 再点回根部语义）
     private val onTap: () -> Unit = {}
 ) {
@@ -40,8 +40,8 @@ class InteractiveHighlight(
     val pressProgress: Float get() = press.value
     val offset: Offset get() = location.value - start
 
-    // 弥散高光：官方 demo 同款 AGSL，径向 smoothstep 渐隐 + Plus 混合；
-    // 之前简化成 drawCircle 纯色圆，边缘生硬，视觉上退化为半透明遮罩
+    // 弥散高光：官方 demo 同款 AGSL 径向 smoothstep 渐隐 + Plus 混合；
+    // 之前简化成 drawCircle 纯色圆 边缘生硬 视觉上退化为半透明遮罩
     private val shader =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             RuntimeShader(
@@ -85,7 +85,7 @@ half4 main(float2 coord) {
                     blendMode = BlendMode.Plus
                 )
             } else {
-                // API < 33 无 AGSL：径向渐变模拟弥散，避免纯色圆的遮罩感
+                // API < 33 无 AGSL：径向渐变模拟弥散 避免纯色圆的遮罩感
                 val radius = size.minDimension * 1.2f
                 drawCircle(
                     Brush.radialGradient(
@@ -132,9 +132,9 @@ half4 main(float2 coord) {
         }
     }
 
-    // 仅按压版：不消费指针事件、不跟手拖动，用 clickable 的按钮仍能正常收到点击。
-    // 按下时把 location 吸附到按压点，弥散高光从手指位置绽开（Nexio 原版 pressOnly
-    // 不更新 position，高光会固定在 (0,0) 角落，这里修正）。
+    // 仅按压版：不消费指针事件、不跟手拖动 用 clickable 的按钮仍能正常收到点击
+    // 按下时把 location 吸附到按压点 弥散高光从手指位置绽开（Nexio 原版 pressOnly
+    // 不更新 position 高光会固定在 (0,0) 角落 这里修正）
     val pressOnlyModifier: Modifier =
         Modifier.pointerInput(animationScope) {
             awaitEachGesture {
@@ -144,7 +144,7 @@ half4 main(float2 coord) {
                     location.snapTo(down.position)
                     press.animateTo(1f, spring(0.5f, 300f, 0.001f))
                 }
-                // 等待所有手指释放再回落，避免多指场景提前熄灭
+                // 等待所有手指释放再回落 避免多指场景提前熄灭
                 do {
                     val event = awaitPointerEvent(PointerEventPass.Final)
                 } while (event.changes.any { it.pressed })

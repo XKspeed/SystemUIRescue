@@ -1,7 +1,7 @@
 name: Build APK
 
 on:
-  # 只手动触发：每次 push 都构建一次没必要，要包时到 Actions 页面点 Run workflow
+  # 只手动触发：每次 push 都构建一次没必要 要包时到 Actions 页面点 Run workflow
   workflow_dispatch:
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
       - name: Grant execute permission
         run: chmod +x ./gradlew
 
-      # Debug 包自带 debug 签名，chmod 之后可直接安装到手机
+      # Debug 包自带 debug 签名 chmod 之后可直接安装到手机
       - name: Build Debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
 

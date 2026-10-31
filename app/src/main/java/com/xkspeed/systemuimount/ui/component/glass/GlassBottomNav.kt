@@ -20,12 +20,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 data class GlassNavItem(val label: String, val icon: ImageVector)
 
 /**
- * 底栏：液态玻璃胶囊。
+ * 底栏：液态玻璃胶囊
  *
  * - 玻璃开：容器玻璃（blur 4dp + 折射透镜 + 内阴影）+ 选中 tab 的玻璃胶囊可拖动
- * - 玻璃关（UiConfigState.enableBlur=false）：退化为磨砂胶囊，选中 tab 用主题色图标
+ * - 玻璃关（UiConfigState.enableBlur=false）：退化为磨砂胶囊 选中 tab 用主题色图标
  *
- * backdrop 必须是**页面内容挂了 layerBackdrop 的那一个**，否则采样不到滚动内容。
+ * backdrop 必须是**页面内容挂了 layerBackdrop 的那一个** 否则采样不到滚动内容
  */
 @Composable
 fun GlassBottomNav(
@@ -40,7 +40,7 @@ fun GlassBottomNav(
     val contentColor = LocalGlassContentColor.current
         ?: if (dark) Color.White else Color.Black
     val accentColor = MiuixTheme.colorScheme.primary
-    // 安全模式下彻底关掉玻璃（连 solid 磨砂也不走），退回普通底栏
+    // 安全模式下彻底关掉玻璃（连 solid 磨砂也不走） 退回普通底栏
     val solidCapsule = !UiConfigState.enableBlur || UiConfigState.safeMode
 
     LiquidBottomTabs(
