@@ -1,6 +1,6 @@
 {
-  "versionCode": 4,
-  "versionName": "1.2.0",
-  "url": "https://github.com/XKspeed/SystemUIRescue/releases/download/v1.2.0/app-release.apk",
+  "versionCode": 5,
+  "versionName": "1.2.0-hotfix1",
+  "url": "https://github.com/XKspeed/SystemUIRescue/releases/download/v1.2.0-hotfix1/app-release.apk",
   "changelog": "底栏固定为 界面 / 主页 / 设置 三页 只能点底栏切换 左右滑动不再翻页\n主页新增独立测试流程 自选待测与救砖 apk 安装后抓 crash 日志 崩溃自动换回救砖包\n文件选择直接拉起 MT 管理器 兼容 apk.1 后缀 界面页强制校验 SystemUI 包名\n设置页 运行模式与增强救砖联动 开启增强救砖强制屏蔽系统救援且不可关闭\n日志 + 救砖模式自动把崩溃上限设为 30 关掉自动救砖也不会再被系统抢先收走界面\n日志目录改为设置页联动卡片 运行数据不再重复展示 模块路径信息移除\n音量键识别后只显示「已识别」 不再展示具体输入设备\n关于页移入设置 支持检查更新与自动检查更新 主页版本号旁可跳转新版本\n主题设置三卡合一 所有滑动条支持点击输入精确数值"
 }
