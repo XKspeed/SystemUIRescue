@@ -146,6 +146,11 @@ fun App() {
     // 记录当前弹窗对应的是哪份崩溃文件 关闭时用来标记「已看过」
     var crashFile by remember { mutableStateOf<File?>(null) }
 
+    // 主页选到了系统界面本体：拦下来并引导去界面专区
+    var sysUiInMain by remember { mutableStateOf(false) }
+    // 让底栏跳到指定页（-1 表示无）
+    var jumpTab by remember { mutableIntStateOf(-1) }
+
     // 更新：启动时后台查一次 10 秒超时 查不到就当没更新
     var latest by remember { mutableStateOf<UpdateInfo?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -279,9 +284,19 @@ fun App() {
             }
 
             // 主页：不校验包名（测的可能根本不是 SystemUI）
-            // 只拦一件事 —— 待测 apk 和救砖 apk 是同一个文件
+            // 只拦两件事 —— 待测 apk 和救砖 apk 是同一个文件、待测 apk 是系统界面本体
             if (target == PickerTarget.MAIN_RESCUE || target == PickerTarget.MAIN_TARGET) {
                 val isRescue = target == PickerTarget.MAIN_RESCUE
+                // 主页的待测 apk 是直接 pm install 装进系统的
+                // 系统界面本体装错一次就是黑砖 这里必须拉黑 只放行界面专区的模块流程
+                if (!isRescue) {
+                    val pkg = withContext(Dispatchers.IO) { packageNameOf(context, file) }
+                    if (pkg == SYSTEMUI_PACKAGE) {
+                        withContext(Dispatchers.IO) { file.delete() }
+                        sysUiInMain = true
+                        return@launch
+                    }
+                }
                 // 收进私有目录 只有重新选才会覆盖旧的
                 val dst = withContext(Dispatchers.IO) {
                     ApkStore.import(
@@ -380,6 +395,8 @@ fun App() {
                 state = state,
                 rootOk = rootOk,
                 busy = busy,
+                jumpTab = jumpTab,
+                onJumpTabConsumed = { jumpTab = -1 },
                 onPickRescue = { pickFile(PickerTarget.RESCUE) },
                 onPickTarget = { pickFile(PickerTarget.TARGET) },
                 onPickMainRescue = { pickFile(PickerTarget.MAIN_RESCUE) },
@@ -599,6 +616,43 @@ fun App() {
         }
     }
 
+    // 主页选了系统界面本体：这里装了就是黑砖 引导去走模块流程
+    if (sysUiInMain) {
+        MiuixDialog(
+            title = "这个包不能装",
+            onDismiss = { sysUiInMain = false },
+        ) {
+            Text(
+                "$SYSTEMUI_PACKAGE 是系统界面本体。主页会把待测包直接装进系统，" +
+                    "装坏一次就是黑砖，所以这里不让选。",
+                color = MiuixTheme.colorScheme.onSurface,
+                style = MiuixTheme.textStyles.subtitle,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "要测系统界面请去「界面专区」 那边走模块挂载和救砖守护 " +
+                    "崩了会自动换回救砖包",
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = MiuixTheme.textStyles.subtitle,
+            )
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(onClick = { sysUiInMain = false }) { Text("知道了") }
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = {
+                        sysUiInMain = false
+                        jumpTab = 0
+                    },
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) { Text("前往界面专区") }
+            }
+        }
+    }
+
     // 没有 root：直接给两个选择 别让用户点进一堆"操作失败"
     if (showRootDialog) {
         MiuixDialog(
@@ -640,6 +694,8 @@ private fun MainScaffold(
     state: ModuleState,
     rootOk: Boolean?,
     busy: Boolean,
+    jumpTab: Int,
+    onJumpTabConsumed: () -> Unit,
     onPickRescue: () -> Unit,
     onPickTarget: () -> Unit,
     onPickMainRescue: () -> Unit,
@@ -683,6 +739,13 @@ private fun MainScaffold(
     // 反过来又触发一次 animateScrollToPage(1) —— 结果永远停在中间页
     LaunchedEffect(pagerState.settledPage) {
         selected = pagerState.settledPage
+    }
+
+    // 主页误选系统界面包被拦下后 点弹窗里的「前往界面专区」直接切过去
+    LaunchedEffect(jumpTab) {
+        if (jumpTab < 0) return@LaunchedEffect
+        pagerState.animateScrollToPage(jumpTab)
+        onJumpTabConsumed()
     }
 
     // 系统返回键：不在主页时按返回 → 回到主页 而不是退出应用

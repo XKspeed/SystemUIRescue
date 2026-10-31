@@ -391,7 +391,7 @@ fun MainPage(
                     summary = if (targetReady)
                         LogConfig.targetPath.substringAfterLast('/') +
                             " · " + Module.fmtSize(LogConfig.targetSize)
-                    else "未选择 · 点击选择要测试的 apk",
+                    else "未选择 · 点击选择要测试的 apk（系统界面本体请去界面专区）",
                     onClick = onPickTarget,
                 )
             }
