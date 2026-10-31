@@ -67,6 +67,7 @@ fun SettingsPage(
     onOpenCrashLog: () -> Unit = {},
     onOpenVolumeCheck: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
     onCheckUpdate: () -> Unit = {},
     checkingUpdate: Boolean = false,
 ) {
@@ -208,9 +209,9 @@ fun SettingsPage(
                                 // 救砖靠音量键触发 校验入口就放这一组最上面
                                 ArrowPreference(
                                     title = "音量键校验",
-                                    summary = if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
+                                    summary = if (state.volumeAssessed)
                                         "已识别"
-                                    else "未识别 · 救砖时音量键可能没反应",
+                                    else "未校验 · 救砖时音量键可能没反应",
                                     onClick = onOpenVolumeCheck,
                                 )
                                 HorizontalDivider(
@@ -328,6 +329,18 @@ fun SettingsPage(
                         InfoRow("已救砖", "${state.protectCount} 次")
                         InfoRow("SystemUI", if (state.pid.isNotBlank()) "PID ${state.pid}" else "未运行")
                         InfoRow("崩溃上限", state.rescueLimitText)
+                    }
+                }
+
+                // 引导随时能重看：首次启动的三页说明 + 音量键校验
+                item { SmallTitle("使用") }
+                item {
+                    SectionCard {
+                        ArrowPreference(
+                            title = "使用引导",
+                            summary = "再看一遍说明 顺手重新校验音量键",
+                            onClick = onOpenGuide,
+                        )
                     }
                 }
 

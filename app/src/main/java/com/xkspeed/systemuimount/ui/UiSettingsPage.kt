@@ -66,6 +66,9 @@ object UiConfigState {
     /** 启动时自动查一次更新 关掉就只在关于页手动查 */
     var autoCheckUpdate by mutableStateOf(true)
 
+    /** 首次启动引导是否走完（走完或跳过都算） */
+    var onboarded by mutableStateOf(false)
+
     /**
      * 安全模式：连续崩溃过（多半是液态玻璃这块的绘制炸了）
      * 此时关掉所有玻璃效果 让 App 至少能打开 能进设置
@@ -77,6 +80,9 @@ object UiConfigState {
         enableBlur = p.getBoolean("enable_blur", true)
         predictiveBack = p.getBoolean("predictive_back", true)
         autoCheckUpdate = p.getBoolean("auto_check_update", true)
+        // 老用户升级上来时 ui_config 里已经有键 不再弹一次引导
+        // 全新安装时 prefs 是空的 才会走引导
+        onboarded = p.getBoolean("onboarded", p.contains("auto_check_update"))
         safeMode = CrashLog.safeMode()
         GlassEffectState.load(context)
     }
@@ -86,6 +92,7 @@ object UiConfigState {
             putBoolean("enable_blur", enableBlur)
             putBoolean("predictive_back", predictiveBack)
             putBoolean("auto_check_update", autoCheckUpdate)
+            putBoolean("onboarded", onboarded)
         }.apply()
     }
 }

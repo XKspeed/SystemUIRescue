@@ -295,9 +295,7 @@ fun HomePage(
                             if (state.model.isNotBlank()) InfoRow("机型", state.model)
                             InfoRow(
                                 "音量键",
-                                if (state.keyUp.isNotBlank() || state.keyDown.isNotBlank())
-                                    "已识别"
-                                else "未识别（仅日志模式）",
+                                if (state.volumeAssessed) "已识别" else "未校验",
                             )
                         }
                     }

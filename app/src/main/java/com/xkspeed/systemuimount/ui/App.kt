@@ -117,6 +117,10 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object About : Route
+
+    /** 从设置里重新看一遍引导 */
+    @Serializable
+    data object Guide : Route
 }
 
 /** 底栏三页 默认停在中间的主页 */
@@ -126,6 +130,20 @@ private const val HOME_PAGE = 1
 fun App() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 首次启动先走引导：欢迎 / 须知 / 环境 / 音量键 / 完成
+    // 校验收在这里做 装完模块第一次打开就能确认按键读得到
+    var onboarded by remember { mutableStateOf(UiConfigState.onboarded) }
+    if (!onboarded) {
+        OnboardingPage(
+            onDone = {
+                UiConfigState.onboarded = true
+                UiConfigState.save(context)
+                onboarded = true
+            },
+        )
+        return
+    }
 
     // 返回（含预测性返回手势）由 NavDisplay 内部统一处理 这里不再注册 handler：
     // 两层 handler 会互相抢事件 反而让手势失效
@@ -444,6 +462,7 @@ fun App() {
                 onOpenCrashLog = { push(Route.CrashLogs) },
                 onOpenThirdPartyLicenses = { push(Route.ThirdPartyLicenses) },
                 onOpenAbout = { push(Route.About) },
+                onOpenGuide = { push(Route.Guide) },
                 latest = latest,
                 onOpenRelease = { openRelease() },
                 onCheckUpdate = {
@@ -510,6 +529,16 @@ fun App() {
                 onOpenRelease = { openRelease() },
                 onOpenThirdPartyLicenses = { push(Route.ThirdPartyLicenses) },
                 onBack = { backStack.removeLastOrNull() },
+            )
+        }
+
+        entry<Route.Guide> {
+            OnboardingPage(
+                onDone = {
+                    // 引导里可能重新校验了音量键 回来顺手刷一次状态
+                    scope.launch { runCatching { refresh() } }
+                    backStack.removeLastOrNull()
+                },
             )
         }
 
@@ -708,6 +737,7 @@ private fun MainScaffold(
     onOpenCrashLog: () -> Unit,
     onOpenThirdPartyLicenses: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenGuide: () -> Unit,
     latest: UpdateInfo?,
     onOpenRelease: () -> Unit,
     onCheckUpdate: () -> Unit,
@@ -824,6 +854,7 @@ private fun MainScaffold(
                             onOpenCrashLog = onOpenCrashLog,
                             onOpenVolumeCheck = onOpenVolumeCheck,
                             onOpenAbout = onOpenAbout,
+                            onOpenGuide = onOpenGuide,
                             onCheckUpdate = onCheckUpdate,
                             checkingUpdate = checkingUpdate,
                         )

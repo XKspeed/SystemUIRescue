@@ -30,6 +30,9 @@ data class ModuleState(
     // ##KEYS
     val keyUp: String = "",
     val keyDown: String = "",
+    // ##ENV saved_assess：conf 里真的做过校验（VOLUME_CHECK_ASSESS=1）才为 true
+    // 不能拿 keyUp/keyDown 非空当已校验 —— webctl 没校验过也会按能力位扫出设备
+    val volumeAssessed: Boolean = false,
     // settings.conf
     val logMode: String = "0",
     val keyTimeout: String = "30",
@@ -82,6 +85,7 @@ object Module {
             model = env["model"].orEmpty(),
             keyUp = keys["up"].orEmpty(),
             keyDown = keys["down"].orEmpty(),
+            volumeAssessed = env["saved_assess"] == "1",
             logMode = c["LOG_MODE"].orEmpty().ifBlank { "0" },
             keyTimeout = c["KEY_TIMEOUT"].orEmpty().ifBlank { "30" },
             fatalThreshold = c["FATAL_THRESHOLD"].orEmpty().ifBlank { "3" },
@@ -132,6 +136,18 @@ object Module {
     suspend fun check(sub: String): String = withContext(Dispatchers.IO) {
         Root.exec("sh " + Root.q(Root.MODULE_DIR + "/webroot/check.sh") + " " + sub)
     }
+
+    /**
+     * 校验通过后落盘：写上 VOLUME_CHECK_ASSESS=1 和时间/环境快照
+     * 顺手把实测到的设备路径存下来 救砖时就不用再猜
+     */
+    suspend fun saveVolumeCheck(upDev: String = "", downDev: String = ""): String =
+        withContext(Dispatchers.IO) {
+            Root.exec(
+                "sh " + Root.q(Root.MODULE_DIR + "/webroot/check.sh") +
+                    " save " + Root.q(upDev) + " " + Root.q(downDev)
+            )
+        }
 
     suspend fun setRescueOff(off: Boolean): String =
         Root.webctl(if (off) "rescue off" else "rescue on")

@@ -91,18 +91,24 @@ fun VolumeCheckPage(
         scope.launch {
             hint = "请按一次【音量 +】"
             upState = StepState.Waiting
-            val up = Module.check("up").trim()
-            val upOk = up.startsWith("OK")
+            val upOut = Module.check("up").trim()
+            val upLine = upOut.lineSequence().firstOrNull { it.startsWith("OK") }
+            val upOk = upLine != null
             upState = if (upOk) StepState.Passed else StepState.Failed
 
             hint = "请按一次【音量 −】"
             downState = StepState.Waiting
-            val down = Module.check("down").trim()
-            val downOk = down.startsWith("OK")
+            val downOut = Module.check("down").trim()
+            val downLine = downOut.lineSequence().firstOrNull { it.startsWith("OK") }
+            val downOk = downLine != null
             downState = if (downOk) StepState.Passed else StepState.Failed
 
             if (upOk && downOk) {
-                Module.check("save")
+                // 把实测到的设备一起写进配置 救砖时不用再猜
+                Module.saveVolumeCheck(
+                    upLine.orEmpty().removePrefix("OK").trim(),
+                    downLine.orEmpty().removePrefix("OK").trim(),
+                )
                 saved = true
                 hint = "校验通过 已写入配置"
                 onFinished()
