@@ -164,6 +164,8 @@ Release 工作流从仓库 Secrets 读取签名密钥 密钥不进入代码库 �
 
 发版两步：① 在 `update.md` 顶部写好本次更新；② Actions 里点 Release 版本号填 `1.2.0`（与 `build.gradle.kts` 一致时不再递增 `versionCode`）剩下交给工作流：改版本号 → 构建签名 → 发 Release → 把 `versionCode` / `versionName` / 下载地址 / `changelog` 自动写进仓库根的 [`update.json`](update.json) 并提交回 `main` App 下次启动就能查到更新
 
+版本号支持带后缀 例如 `1.2.0-hotfix1` 会打出 tag `v1.2.0-hotfix1` 并把 `versionName` 原样写进 `build.gradle.kts`（`versionCode` 照常 +1）写 `update.md` 时顶部标题要跟着写成 `## v1.2.0-hotfix1 更新` 否则 Release 说明会取到上一版的内容 App 端只比 `versionCode` 所以 hotfix 能正常推送
+
 ---
 
 ## 📁 项目结构

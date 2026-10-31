@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（如 1.0.1 可带 v）；留空沿用 build.gradle.kts 现有版本 不改动'
+        description: '版本号（如 1.0.1 / 1.2.0-hotfix1，可带 v）；留空沿用 build.gradle.kts 现有版本 不改动'
         required: false
         default: ''
 
@@ -105,8 +105,10 @@ jobs:
             echo "bump=false" >> "$GITHUB_OUTPUT"
             echo "未填版本号 沿用现有 versionName: ${VERSION}"
           else
-            if ! printf '%s' "$INPUT" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
-              echo "::error::版本号格式不对：${INPUT}（应为 1.0.1 这样的数字点分格式）"
+            # 允许正式版 1.2.1，也允许 1.2.0-hotfix1 / 1.2.0-beta.2 这种后缀
+            # tag 直接拼 v${VERSION}，versionName 原样写进 build.gradle.kts
+            if ! printf '%s' "$INPUT" | grep -qE '^[0-9]+(\.[0-9]+)+([-.+][0-9A-Za-z]+)*$'; then
+              echo "::error::版本号格式不对：${INPUT}（支持 1.0.1 / 1.2.0-hotfix1 / 1.2.0-beta.2）"
               exit 1
             fi
             VERSION="$INPUT"
