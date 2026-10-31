@@ -288,7 +288,9 @@ jobs:
               exit 0
             fi
             echo "推送被拒 第 ${i} 次重试…"
-            git pull --rebase --autostash origin main
+            # 用 rebase 而不是 pull：checkout 可能是 detached HEAD pull 会直接报错
+            git fetch origin main
+            git rebase --autostash FETCH_HEAD
           done
           echo "::error::update.json 推送失败"
           exit 1
