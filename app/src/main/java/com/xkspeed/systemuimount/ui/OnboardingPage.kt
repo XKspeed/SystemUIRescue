@@ -88,8 +88,12 @@ private sealed interface KeyState {
 private data class EnvResult(
     val root: Boolean = false,
     val moduleVersion: String = "",
-    val running: Boolean = false,
-)
+    val moduleAuthor: String = "",
+) {
+    /** 只认 XKspeed 的模块：别家挂载的没有这套 webctl.sh / check.sh 调不动 */
+    val moduleOk: Boolean
+        get() = moduleVersion.isNotBlank() && moduleAuthor.equals("XKspeed", ignoreCase = true)
+}
 
 /**
  * 首次启动引导
@@ -139,7 +143,7 @@ fun OnboardingPage(onDone: () -> Unit) {
         env = EnvResult(
             root = root,
             moduleVersion = st?.version.orEmpty(),
-            running = st?.daemonRunning == true,
+            moduleAuthor = st?.moduleAuthor.orEmpty(),
         )
         // 之前校验过就不用再按一遍 直接当作通过
         if (st?.volumeAssessed == true) {
@@ -515,7 +519,7 @@ private fun EnvStep(env: EnvResult, checking: Boolean, onRetry: () -> Unit) {
         Text("环境检查", style = MiuixTheme.textStyles.title1, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "确认下面三项都能读到 后面救砖才有意义",
+            "确认下面两项都能读到 后面救砖才有意义",
             style = MiuixTheme.textStyles.subtitle,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
@@ -525,15 +529,13 @@ private fun EnvStep(env: EnvResult, checking: Boolean, onRetry: () -> Unit) {
             EnvRow("ROOT 权限", if (checking) "检测中…" else if (env.root) "已授权" else "未授权", env.root, checking)
             EnvRow(
                 "救砖模块",
-                if (checking) "检测中…"
-                else if (env.moduleVersion.isNotBlank()) "v${env.moduleVersion}" else "未安装",
-                env.moduleVersion.isNotBlank(),
-                checking,
-            )
-            EnvRow(
-                "SystemUI",
-                if (checking) "检测中…" else if (env.running) "守护运行中" else "未运行",
-                env.running,
+                when {
+                    checking -> "检测中…"
+                    env.moduleVersion.isBlank() -> "未安装"
+                    !env.moduleOk -> "不是 XKspeed 版"
+                    else -> "v${env.moduleVersion} · XKspeed"
+                },
+                env.moduleOk,
                 checking,
             )
         }
@@ -554,7 +556,8 @@ private fun EnvStep(env: EnvResult, checking: Boolean, onRetry: () -> Unit) {
 
         Spacer(Modifier.height(8.dp))
         Text(
-            "没有 ROOT 也能继续看界面 只是所有操作都会失败。授权框里选「允许」再回来重新检测。",
+            "模块作者必须是 XKspeed 用的才是这套脚本 别家挂载的调不了 sh。\n" +
+                "没有 ROOT 也能继续看界面 只是所有操作都会失败。授权框里选「允许」再回来重新检测。",
             style = MiuixTheme.textStyles.subtitle,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )

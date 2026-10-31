@@ -10,6 +10,8 @@ const val CRASH_LIMIT_MANUAL = 30
 data class ModuleState(
     // ##VERSION
     val version: String = "",
+    // module.prop 的 author：不是 XKspeed 就不是这套脚本 调不了 sh
+    val moduleAuthor: String = "",
     // ##PID
     val pid: String = "",
     // ##STATUS
@@ -60,8 +62,10 @@ object Module {
     suspend fun readState(): ModuleState = withContext(Dispatchers.IO) {
         val boot = Root.webctl("boot")
         val conf = Root.exec("cat ${Root.q(Root.CONF)} 2>/dev/null")
+        val prop = Root.exec("cat ${Root.q(Root.MODULE_PROP)} 2>/dev/null")
         val sec = parseSections(boot)
         val c = parseConf(conf)
+        val p = parseConf(prop)
 
         val st = sec["STATUS"].orEmpty()
         val rs = sec["RESCUE"].orEmpty()
@@ -70,6 +74,7 @@ object Module {
 
         return@withContext ModuleState(
             version = sec["VERSION"]?.get("version").orEmpty(),
+            moduleAuthor = p["author"].orEmpty(),
             pid = sec["PID"]?.get("pid").orEmpty(),
             running = st["running"].orEmpty(),
             rescueSize = st["rescue"]?.toLongOrNull() ?: 0L,
